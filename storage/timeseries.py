@@ -5,7 +5,7 @@ Handles behavioral feature storage and retrieval
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import os
 from common.retry import retry_with_backoff
@@ -51,7 +51,7 @@ class TimeSeriesDB:
                                  timestamp: Optional[datetime] = None):
         """Write keystroke features to database"""
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
         
         point = Point("keystroke_features") \
             .tag("user_id", user_id) \
@@ -70,7 +70,7 @@ class TimeSeriesDB:
                             timestamp: Optional[datetime] = None):
         """Write mouse features to database"""
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
         
         point = Point("mouse_features") \
             .tag("user_id", user_id)
@@ -88,7 +88,7 @@ class TimeSeriesDB:
                             timestamp: Optional[datetime] = None):
         """Write application transition"""
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
         
         point = Point("app_transitions") \
             .tag("user_id", user_id) \
@@ -105,7 +105,7 @@ class TimeSeriesDB:
                                timestamp: Optional[datetime] = None):
         """Write confidence scores"""
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
         
         point = Point("confidence_scores") \
             .tag("user_id", user_id) \
@@ -148,7 +148,7 @@ class TimeSeriesDB:
     def query_recent_features(self, measurement: str, minutes: int = 1,
                              user_id: str = "default") -> List[Dict]:
         """Query features from last N minutes"""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(minutes=minutes)
         
         query = f'''
@@ -192,8 +192,8 @@ class TimeSeriesDB:
     
     def delete_old_data(self, older_than_days: int = 30):
         """Delete data older than specified days"""
-        start = datetime(1970, 1, 1)
-        stop = datetime.utcnow() - timedelta(days=older_than_days)
+        start = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        stop = datetime.now(timezone.utc) - timedelta(days=older_than_days)
         
         delete_api = self.client.delete_api()
         delete_api.delete(

@@ -1,0 +1,74 @@
+# Developer Mode Configuration
+# ⚠ WARNING: This file enables a BYPASS of all authentication checks!
+# ⚠ Only use for development/debugging. Remove for production deployments.
+
+# Enable/Disable developer mode
+enabled: true
+
+# Data Collection Control
+data_collection:
+  # Stop all data collection when dev mode is active
+  # Set to true if you want collectors to pause entirely
+  # Set to false to keep collecting (just disable authentication)
+  stop_collection: false  # Default: keep collecting
+  
+  # Note: If false, data will still be tagged with dev_mode=true
+  # so you can filter it out during training
+
+# Bypass methods (any one of these will disable authentication)
+
+# Method 1: Magic file (presence of this file = developer mode active)
+magic_file:
+  enabled: true
+  path: "/tmp/.seclyzer_dev_mode"  # Touch this file to activate
+  
+# Method 2: Special key sequence
+# Press this combination within 3 seconds to disable auth for 5 minutes
+key_sequence:
+  enabled: true
+  sequence: ["LeftCtrl", "LeftShift", "F12", "F12", "F12"]  # Ctrl+Shift+F12 three times
+  timeout_seconds: 3
+  duration_minutes: 5
+
+# Method 3: Environment variable
+env_var:
+  enabled: true
+  name: "SECLYZER_DEV_MODE"  # Set to "1" to activate
+  
+# Method 4: Password override
+# Type this special password in any text field to bypass
+password_override:
+  enabled: true
+  # SHA-256 hash of your secret password (not the actual password)
+  # Default: "Changed" (CHANGE THIS!)
+  password_hash: "aa7c5cd8591336ba5d80eb29833911f2c7c481f12682d72eadbf8de3e1d29b7a"
+  
+# Security settings
+security:
+  # Log all developer mode activations
+  audit_log: true
+  audit_file: "/var/log/seclyzer/dev_mode.log"
+  
+  # Show visible warning when in dev mode
+  show_warning: true
+  warning_message: "⚠ DEVELOPER MODE ACTIVE - AUTH DISABLED ⚠"
+  
+  # Automatically disable after X hours (0 = never)
+  auto_disable_hours: 24
+  
+  # Require confirmation prompt before disabling auth
+  require_confirmation: false
+
+# Developer shortcuts
+shortcuts:
+  # Force retrain models with specific score
+  force_score_shortcut:
+    enabled: true
+    key: "F9"
+    modifier: "LeftCtrl"  # Ctrl+F9 sets score to 100%
+    
+  # View real-time debug overlay
+  debug_overlay_shortcut:
+    enabled: true
+    key: "F10"
+    modifier: "LeftCtrl"  # Ctrl+F10 shows debug info

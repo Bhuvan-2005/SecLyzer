@@ -2,6 +2,38 @@
 
 All notable changes to SecLyzer will be documented in this file.
 
+## [PYTHON 3.12+ COMPATIBILITY & CODE CLEANUP] - 2025-12-01 12:39 IST
+
+### Fixed
+- **DeprecationWarnings (Python 3.12+ compatibility)**:
+  - Replaced `datetime.utcnow()` with `datetime.now(timezone.utc)` in:
+    - `common/logger.py`
+    - `processing/extractors/keystroke_extractor.py`
+    - `processing/extractors/mouse_extractor.py`
+    - `storage/timeseries.py` (5 occurrences)
+    - `tests/storage/test_timeseries.py`
+  - Replaced `datetime.utcfromtimestamp()` with `datetime.fromtimestamp(ts, tz=timezone.utc)` in:
+    - `processing/extractors/app_tracker.py`
+    - `tests/extractors/test_app_tracker.py`
+  - Fixed SQLite datetime adapter deprecation:
+    - Added custom `adapt_datetime()` and `convert_datetime()` functions in `storage/database.py`
+    - Registered adapters with sqlite3 module for Python 3.12+ compatibility
+    - Updated connection to use `detect_types=sqlite3.PARSE_DECLTYPES`
+
+### Removed
+- **Non-essential documentation**:
+  - `ARCHITECTURE_OPTIMIZED.md` (draft version, kept `ARCHITECTURE.md`)
+  - `PHASE3_REVIEW.md` (review notes, not needed in production)
+  - `COMPREHENSIVE_AUDIT_REPORT.md` (audit notes, not needed in production)
+  - `FIX_INPUT_PERMISSIONS.md` (temporary fix documentation)
+  - `admin (self)/` directory with credentials (security cleanup)
+
+### Verified
+- ✅ All 32 unit tests passing
+- ✅ Only 1 external dependency warning remaining (dateutil, outside our control)
+- ✅ No regressions in core functionality
+- ✅ All datetime operations now timezone-aware UTC
+
 ## [CONTROL SCRIPTS ALIGNMENT] - 2025-12-01 16:17 IST
 
 ### Changed

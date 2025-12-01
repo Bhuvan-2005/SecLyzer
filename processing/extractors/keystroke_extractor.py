@@ -6,7 +6,7 @@ Processes raw keystroke events into ML-ready feature vectors
 import redis
 import json
 import polars as pl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque, defaultdict
 from typing import Dict, List, Optional
 import numpy as np
@@ -308,7 +308,7 @@ class KeystrokeExtractor:
             
             # 2. Publish to Redis (Real-time Inference)
             # Add timestamp and type metadata
-            features['timestamp'] = datetime.utcnow().isoformat()
+            features['timestamp'] = datetime.now(timezone.utc).isoformat()
             features['type'] = 'keystroke'
             self.redis_client.publish('seclyzer:features:keystroke', json.dumps(features))
             

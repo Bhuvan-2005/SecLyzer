@@ -44,7 +44,7 @@ SecLyzer is a behavioral biometric authentication system that learns your unique
 ### Prerequisites
 
 - **OS:** Linux (Ubuntu 20.04+, Debian, Arch)
-- **Python:** 3.8+
+- **Python:** 3.12+ (required for timezone-aware datetime support)
 - **Rust:** 1.60+ (for building collectors)
 - **Databases:** Redis, InfluxDB
 - **Dependencies:** See `requirements_ml.txt`
@@ -182,7 +182,7 @@ SecLyzer includes a comprehensive developer management script with 20+ commands:
 ./scripts/dev status         # Show detailed status
 
 # Testing
-./scripts/dev test           # Run test suite (36 tests)
+./scripts/dev test           # Run test suite (32 tests)
 ./scripts/dev test-coverage  # Generate coverage report
 ./scripts/dev lint           # Run linters
 

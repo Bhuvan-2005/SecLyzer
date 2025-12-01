@@ -6,7 +6,7 @@ import logging
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import uuid
 
@@ -15,7 +15,7 @@ class JSONFormatter(logging.Formatter):
     
     def format(self, record):
         log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

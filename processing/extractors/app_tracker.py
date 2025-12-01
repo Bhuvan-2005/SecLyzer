@@ -5,7 +5,7 @@ Monitors app switching patterns and builds behavioral profile
 
 import redis
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 from typing import Dict, List, Optional
 import numpy as np
@@ -86,7 +86,7 @@ class AppTracker:
         """Handle application switch event"""
         new_app = event['app_name']
         timestamp = event['ts'] / 1_000_000  # Convert to seconds
-        current_time = datetime.utcfromtimestamp(timestamp)
+        current_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         
         # Record transition
         if self.current_app is not None and self.current_app != new_app:

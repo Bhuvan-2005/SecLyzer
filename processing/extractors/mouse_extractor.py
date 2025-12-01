@@ -6,7 +6,7 @@ Processes raw mouse events into ML-ready feature vectors
 import redis
 import json
 import polars as pl
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 from typing import Dict, List, Optional
 import numpy as np
@@ -294,7 +294,7 @@ class MouseExtractor:
             
             # 2. Publish to Redis (Real-time Inference)
             # Add timestamp and type metadata
-            features['timestamp'] = datetime.utcnow().isoformat()
+            features['timestamp'] = datetime.now(timezone.utc).isoformat()
             features['type'] = 'mouse'
             self.redis_client.publish('seclyzer:features:mouse', json.dumps(features))
             

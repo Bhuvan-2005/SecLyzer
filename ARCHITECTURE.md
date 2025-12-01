@@ -316,57 +316,35 @@ def extract_keystroke_features(events: List[KeyEvent]) -> np.ndarray:
 
 ### Module 7: ML Models
 
-#### Keystroke Model (Random Forest)
+**STATUS:** Not implemented in this snapshot. Feature extraction is complete; model training and inference are planned for future phases.
+
+#### Keystroke Model (Planned: Random Forest)
 ```python
 # Input: 140-dimensional feature vector
 # Output: Score 0-1 (how "normal" this typing is)
-
-from sklearn.ensemble import RandomForestClassifier
-
-model = RandomForestClassifier(
-    n_estimators=100,
-    max_depth=10,
-    class_weight='balanced'
-)
+# PLANNED - Not yet implemented
 ```
 
-**Training Data**:
-- Positive class: Your own typing (2 weeks of data)
-- Negative class: Public keystroke datasets (CMU, etc.)
-
-#### Mouse Model (One-Class SVM)
+#### Mouse Model (Planned: One-Class SVM)
 ```python
-from sklearn.svm import OneClassSVM
-
-model = OneClassSVM(
-    kernel='rbf',
-    gamma='auto',
-    nu=0.05  # 5% outlier tolerance
-)
+# PLANNED - Not yet implemented
 ```
 
-**Training Data**:
-- Only your own mouse data
-- Model learns "normal" boundary
-
-#### App Usage Model (Markov Chain)
+#### App Usage Model (Planned: Markov Chain)
 ```python
-# Transition probability matrix
-# P(next_app | current_app, time_of_day)
-
-class AppUsageModel:
-    def predict_next_app(self, current_app, hour):
-        # Return probability distribution
-        pass
+# PLANNED - Not yet implemented
 ```
 
 ---
 
 ### Module 8: Fusion Engine
 
-**Algorithm**: Weighted Average with Time Decay
+**STATUS:** Not implemented in this snapshot. Planned for future phase.
+
+**Planned Algorithm**: Weighted Average with Time Decay
 
 ```python
+# PLANNED - Not yet implemented
 def fuse_scores(keystroke_score, mouse_score, app_score, linguistic_score):
     # Weights (sum to 1.0)
     w_key = 0.40
@@ -393,7 +371,9 @@ def fuse_scores(keystroke_score, mouse_score, app_score, linguistic_score):
 
 ### Module 9: Decision Engine
 
-**State Machine**:
+**STATUS:** Not implemented in this snapshot. Planned for future phase.
+
+**Planned State Machine**:
 
 ```mermaid
 stateDiagram-v2
@@ -406,14 +386,15 @@ stateDiagram-v2
     Lockdown --> [*]: User re-authenticates
 ```
 
-**Actions per State**:
+**Planned Actions per State**:
 - **Normal**: No action, silent monitoring
 - **Monitoring**: Log event, show unobtrusive notification
 - **Restricted**: Block sensitive apps (banking, password managers)
 - **Lockdown**: Lock screen, require password + 2FA
 
-**Code**:
+**Planned Code**:
 ```python
+# PLANNED - Not yet implemented
 class DecisionEngine:
     def __init__(self):
         self.state = "Normal"
@@ -632,19 +613,11 @@ SecLyzer/
 │   ├── logging.py           # Centralized logging
 │   └── message_queue.py     # Queue abstraction
 │
-├── training/
-│   ├── train_keystroke.py   # Model training scripts
-│   ├── train_mouse.py
-│   └── evaluate.py          # Model evaluation
-│
 ├── daemon/
-│   ├── seclyzer_daemon.py   # Main orchestrator
-│   └── systemd/
-│       └── seclyzer.service
+│   └── (Planned: Main orchestrator for training/inference)
 │
 ├── ui/
-│   ├── dashboard.html       # Web dashboard (optional)
-│   └── api.py               # REST API for UI
+│   └── (Planned: Web dashboard and REST API)
 │
 ├── tests/
 │   ├── test_collectors.rs

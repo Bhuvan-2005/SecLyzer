@@ -5,9 +5,25 @@ Handles metadata, models, configuration, and audit logs
 
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import json
+
+# Register datetime adapters for Python 3.12+ compatibility
+def adapt_datetime(dt):
+    """Adapt datetime for SQLite storage"""
+    return dt.isoformat() if dt else None
+
+def convert_datetime(s):
+    """Convert ISO format string back to datetime"""
+    if s:
+        # Handle timezone-aware and naive datetimes
+        dt = datetime.fromisoformat(s.decode() if isinstance(s, bytes) else s)
+        return dt
+    return None
+
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_converter("timestamp", convert_datetime)
 
 class Database:
     def __init__(self, db_path: str = "/var/lib/seclyzer/databases/seclyzer.db"):
@@ -19,7 +35,7 @@ class Database:
     def _connect(self):
         """Establish database connection"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.conn.row_factory = sqlite3.Row  # Access by column name
     
     def close(self):
