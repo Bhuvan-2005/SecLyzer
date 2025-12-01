@@ -67,6 +67,7 @@ show_help() {
     echo "  config             - Show current configuration"
     echo "  env                - Show environment variables"
     echo "  version            - Show SecLyzer version info"
+    echo "  backup-git         - Commit changes and push a backup branch to origin"
     echo ""
 }
 
@@ -462,6 +463,61 @@ cmd_backup() {
     fi
 }
 
+cmd_backup_git() {
+    echo -e "${CYAN}Creating Git backup branch...${NC}\n"
+    cd "$PROJECT_ROOT"
+
+    if ! command -v git >/dev/null 2>&1; then
+        echo -e "${RED}✗ git is not installed${NC}"
+        return 1
+    fi
+
+    if [ ! -d ".git" ]; then
+        echo -e "${RED}✗ This directory is not a git repository${NC}"
+        return 1
+    fi
+
+    local status
+    status=$(git status --porcelain)
+    if [ -z "$status" ]; then
+        echo -e "${YELLOW}⚠ No local changes to back up (working tree clean)${NC}"
+        return 0
+    fi
+
+    local timestamp
+    timestamp=$(date +%Y%m%d-%H%M%S)
+
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+
+    local backup_branch
+    backup_branch="backup/${current_branch}-${timestamp}"
+
+    echo "Staging changes..."
+    git add -A
+
+    echo "Creating backup commit..."
+    if ! git commit -m "Automated backup ${timestamp}"; then
+        echo -e "${RED}✗ git commit failed; aborting backup${NC}"
+        return 1
+    fi
+
+    echo "Creating backup branch: ${backup_branch}"
+    if ! git branch "$backup_branch"; then
+        echo -e "${RED}✗ Failed to create backup branch ${backup_branch}${NC}"
+        return 1
+    fi
+
+    echo "Pushing backup branch to origin..."
+    if ! git push -u origin "$backup_branch"; then
+        echo -e "${RED}✗ Failed to push backup branch to origin${NC}"
+        return 1
+    fi
+
+    echo -e "\n${GREEN}✓ Git backup created and pushed: ${backup_branch}${NC}"
+    echo "Review and merge into the master branch on GitHub when ready."
+}
+
 cmd_reset_data() {
     echo -e "${RED}⚠⚠⚠ WARNING ⚠⚠⚠${NC}"
     echo "This will DELETE all collected data!"
@@ -556,6 +612,9 @@ case "${1:-help}" in
         ;;
     backup)
         cmd_backup
+        ;;
+    backup-git)
+        cmd_backup_git
         ;;
     reset-data)
         cmd_reset_data
