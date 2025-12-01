@@ -1,0 +1,419 @@
+#!/bin/bash
+# SecLyzer Control Script
+# Simple on/off switch for all SecLyzer services
+
+set -e
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+INSTALL_DIR="/opt/seclyzer"
+USE_SYSTEMD=false
+
+# Check if systemd services exist
+if systemctl list-units --all | grep -q "seclyzer-"; then
+    USE_SYSTEMD=true
+fi
+
+# Password verification function
+verify_seclyzer_password() {
+    local password_file="/etc/seclyzer/.password_hash"
+    
+    if [ ! -f "$password_file" ]; then
+        echo -e "${YELLOW}⚠ Password not set during installation${NC}"
+        return 0  # Allow if no password set
+    fi
+    
+    local stored_hash=$(cat "$password_file")
+    
+    # Prompt for password
+    read -s -p "Enter SecLyzer password: " entered_password
+    echo ""
+    
+    # Hash entered password
+    local entered_hash=$(echo -n "$entered_password" | sha256sum | cut -d' ' -f1)
+    
+    # Compare hashes
+    if [ "$entered_hash" == "$stored_hash" ]; then
+        return 0  # Success
+    else
+        return 1  # Failure
+    fi
+}
+
+show_status() {
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║         SecLyzer Status                           ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    if [ "$USE_SYSTEMD" = true ]; then
+        echo "Mode: Systemd Services"
+        echo ""
+        systemctl status seclyzer-keyboard --no-pager -l || true
+        echo ""
+        systemctl status seclyzer-mouse --no-pager -l || true
+        echo ""
+        systemctl status seclyzer-app --no-pager -l || true
+    else
+        echo "Mode: Manual (no systemd)"
+        echo ""
+        echo "Checking processes..."
+        
+        if pgrep -f "keyboard_collector" > /dev/null; then
+            echo -e "  Keyboard Collector: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  Keyboard Collector: ${RED}STOPPED${NC}"
+        fi
+        
+        if pgrep -f "mouse_collector" > /dev/null; then
+            echo -e "  Mouse Collector: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  Mouse Collector: ${RED}STOPPED${NC}"
+        fi
+        
+        if pgrep -f "app_monitor" > /dev/null; then
+            echo -e "  App Monitor: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  App Monitor: ${RED}STOPPED${NC}"
+        fi
+        
+        echo ""
+        echo "Feature Extractors (Python):"
+        
+        if pgrep -f "keystroke_extractor.py" > /dev/null; then
+            echo -e "  Keystroke Extractor: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  Keystroke Extractor: ${RED}STOPPED${NC}"
+        fi
+        
+        if pgrep -f "mouse_extractor.py" > /dev/null; then
+            echo -e "  Mouse Extractor: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  Mouse Extractor: ${RED}STOPPED${NC}"
+        fi
+        
+        if pgrep -f "app_tracker.py" > /dev/null; then
+            echo -e "  App Tracker: ${GREEN}RUNNING${NC}"
+        else
+            echo -e "  App Tracker: ${RED}STOPPED${NC}"
+        fi
+    fi
+    
+    echo ""
+    
+    # Check Redis
+    if redis-cli ping > /dev/null 2>&1; then
+        echo -e "Redis: ${GREEN}RUNNING${NC}"
+    else
+        echo -e "Redis: ${RED}STOPPED${NC}"
+    fi
+    
+    # Check InfluxDB
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo -e "InfluxDB: ${GREEN}RUNNING${NC}"
+    else
+        echo -e "InfluxDB: ${RED}STOPPED${NC}"
+    fi
+}
+
+start_services() {
+    echo -e "${GREEN}Starting SecLyzer...${NC}"
+    echo ""
+    
+    # Start Redis if not running
+    if ! redis-cli ping > /dev/null 2>&1; then
+        echo "Starting Redis..."
+        sudo systemctl start redis-server
+    fi
+    
+    # Start InfluxDB if not running
+    if ! curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo "Starting InfluxDB..."
+        sudo systemctl start influxdb
+    fi
+    
+    if [ "$USE_SYSTEMD" = true ]; then
+        echo "Starting collectors..."
+        sudo systemctl start seclyzer-keyboard
+        sudo systemctl start seclyzer-mouse
+        sudo systemctl start seclyzer-app
+        echo -e "${GREEN}✓${NC} Collectors started via systemd"
+    else
+        echo -e "${YELLOW}⚠${NC} Systemd services not installed"
+        echo "Please start collectors manually or run install.sh with systemd enabled"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}✓${NC} SecLyzer started"
+    echo ""
+    echo "To start feature extractors (Phase 2+):"
+    echo "  cd /home/bhuvan/Documents/Projects/SecLyzer"
+    echo "  source /home/bhuvan/Documents/Projects/venv/bin/activate"
+    echo "  python3 processing/extractors/keystroke_extractor.py &"
+    echo "  python3 processing/extractors/mouse_extractor.py &"
+    echo "  python3 processing/extractors/app_tracker.py &"
+}
+
+disable_authentication() {
+    echo -e "${YELLOW}Disabling SecLyzer Authentication...${NC}"
+    echo ""
+    
+    # Require password
+    if ! verify_seclyzer_password; then
+        echo -e "${RED}✗ Incorrect password. Access denied.${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    echo "ℹ️  Collectors will keep running (data collection continues)"
+    echo "ℹ️  Only authentication/locking would be disabled (when an inference/decision engine is active)"
+    echo ""
+    
+    # Create dev mode magic file
+    touch /tmp/.seclyzer_dev_mode
+    
+    echo -e "${GREEN}✓${NC} Authentication disabled"
+    echo ""
+    echo "How it works in this Phase 3 snapshot:"
+    echo "  - Collectors can keep running (data being collected)"
+    echo "  - Feature extractors can keep running (feature computation)"
+    echo "  - Inference/decision engine is not active yet in this snapshot (planned for a later phase)"
+    echo ""
+    echo "To re-enable: sudo ./scripts/seclyzer enable"
+}
+
+enable_authentication() {
+    echo -e "${GREEN}Enabling SecLyzer Authentication...${NC}"
+    echo ""
+    
+    # Remove dev mode magic file
+    rm -f /tmp/.seclyzer_dev_mode
+    
+    echo -e "${GREEN}✓${NC} Authentication enabled"
+    echo ""
+    echo "SecLyzer is now protecting your system"
+}
+
+stop_all() {
+    echo -e "${RED}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║  WARNING: This will STOP all data collection!    ║${NC}"
+    echo -e "${RED}╚═══════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Require password
+    if ! verify_seclyzer_password; then
+        echo -e "${RED}✗ Incorrect password. Access denied.${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    echo "This includes:"
+    echo "  - All collectors (keyboard, mouse, app)"
+    echo "  - All feature extractors"
+    echo "  - Databases (Redis, InfluxDB)"
+    echo ""
+    echo "Use this ONLY for maintenance or troubleshooting."
+    echo "Otherwise, use 'disable' to just turn off authentication."
+    echo ""
+    read -p "Are you sure? [y/N]: " confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Cancelled."
+        exit 0
+    fi
+    
+    echo ""
+    echo -e "${RED}Stopping everything...${NC}"
+    echo ""
+    
+    # Stop systemd services
+    echo -e "${GREEN}✓${NC} Feature extractors stopped"
+    
+    # Stop databases
+    echo "Stopping databases..."
+    sudo systemctl stop redis-server || true
+    sudo systemctl stop influxdb || true
+    echo -e "${GREEN}✓${NC} Databases stopped"
+    
+    echo ""
+    echo -e "${GREEN}✓${NC} Everything stopped"
+    echo ""
+    echo "To restart: sudo ./scripts/seclyzer start"
+}
+
+restart_collectors() {
+    echo "Restarting collectors (keeps databases running)..."
+    
+    if [ "$USE_SYSTEMD" = true ]; then
+        sudo systemctl restart seclyzer-keyboard
+        sudo systemctl restart seclyzer-mouse
+        sudo systemctl restart seclyzer-app
+    else
+        echo "Manual mode - please restart collectors manually"
+    fi
+    
+    echo -e "${GREEN}✓${NC} Collectors restarted"
+}
+
+enable_autostart() {
+    if [ "$USE_SYSTEMD" != true ]; then
+        echo -e "${RED}✗ Systemd services not installed${NC}"
+        echo "Run install.sh and enable systemd integration"
+        exit 1
+    fi
+    
+    echo "Enabling auto-start on boot..."
+    sudo systemctl enable seclyzer-keyboard
+    sudo systemctl enable seclyzer-mouse
+    sudo systemctl enable seclyzer-app
+    echo -e "${GREEN}✓${NC} Auto-start enabled"
+}
+
+disable_autostart() {
+    if [ "$USE_SYSTEMD" != true ]; then
+        echo "Systemd services not installed, nothing to disable"
+        exit 0
+    fi
+    
+    echo "Disabling auto-start on boot..."
+    sudo systemctl disable seclyzer-keyboard || true
+    sudo systemctl disable seclyzer-mouse || true
+    sudo systemctl disable seclyzer-app || true
+    echo -e "${GREEN}✓${NC} Auto-start disabled"
+}
+
+show_help() {
+    echo "SecLyzer Control Script"
+    echo ""
+    echo "Usage: seclyzer [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start       Start all SecLyzer services (collectors + databases)"
+    echo "  disable     Disable authentication (keep collecting data)"
+    echo "  enable      Re-enable authentication"
+    echo "  stop-all    Stop EVERYTHING (collectors, extractors, databases)"
+    echo "  restart     Restart collectors"
+    echo "  status      Show status of all components"
+    echo "  autostart   Enable auto-start on boot (systemd)"
+    echo "  no-autostart Disable auto-start on boot (systemd)"
+    echo "  help        Show this help message"
+    echo ""
+    echo "Common Usage:"
+    echo "  sudo seclyzer start          # Start SecLyzer (first time)"
+    echo "  sudo seclyzer disable        # Turn off locking (keep data collection)"
+    echo "  sudo seclyzer enable         # Turn on locking again"
+    echo "  seclyzer status              # Check what's running"
+    echo "  sudo seclyzer stop-all       # Full shutdown (rare)"
+    echo ""
+    echo "Note: Use 'disable/enable' for daily on/off, NOT 'stop-all'"
+}
+
+show_resources() {
+    echo -e "${BLUE}"
+    echo "╔═══════════════════════════════════════════════════╗"
+    echo "║      SecLyzer Resource Usage                      ║"
+    echo "╚═══════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+
+    # Header
+    printf "%-25s %-8s %-8s %-8s\n" "COMPONENT" "PID" "CPU%" "MEM(MB)"
+    echo "-----------------------------------------------------"
+
+    total_cpu=0
+    total_mem=0
+
+    # Function to print process stats
+    print_proc_stats() {
+        local name=$1
+        local pattern=$2
+        
+        # Get PID, CPU, RSS (in KB)
+        # We use grep to filter, and head to take the first one if multiple (e.g. multiple threads/workers)
+        # For python scripts, we match the full command line
+        local stats=$(ps -eo pid,pcpu,rss,cmd | grep "$pattern" | grep -v "grep" | head -n 1)
+        
+        if [ -n "$stats" ]; then
+            local pid=$(echo "$stats" | awk '{print $1}')
+            local cpu=$(echo "$stats" | awk '{print $2}')
+            local rss_kb=$(echo "$stats" | awk '{print $3}')
+            local mem_mb=$(echo "scale=1; $rss_kb / 1024" | bc)
+            
+            printf "%-25s %-8s %-8s %-8s\n" "$name" "$pid" "$cpu%" "${mem_mb}MB"
+            
+            # Add to totals (using bc for floating point math)
+            total_cpu=$(echo "$total_cpu + $cpu" | bc)
+            total_mem=$(echo "$total_mem + $mem_mb" | bc)
+        else
+            printf "%-25s %-8s %-8s %-8s\n" "$name" "-" "0.0%" "0.0MB"
+        fi
+    }
+
+    # Collectors
+    print_proc_stats "Keyboard Collector" "keyboard_collector"
+    print_proc_stats "Mouse Collector" "mouse_collector"
+    print_proc_stats "App Monitor" "app_monitor"
+    
+    echo "-----------------------------------------------------"
+    
+    # Extractors
+    print_proc_stats "Keystroke Extractor" "keystroke_extractor.py"
+    print_proc_stats "Mouse Extractor" "mouse_extractor.py"
+    print_proc_stats "App Tracker" "app_tracker.py"
+    
+    echo "-----------------------------------------------------"
+
+    # Databases
+    print_proc_stats "Redis" "redis-server"
+    print_proc_stats "InfluxDB" "influxd"
+
+    echo "====================================================="
+    printf "%-25s %-8s %-8s %-8s\n" "TOTAL" "-" "${total_cpu}%" "${total_mem}MB"
+    echo ""
+}
+
+# Main logic
+case "${1:-}" in
+    start)
+        start_services
+        ;;
+    disable)
+        disable_authentication
+        ;;
+    enable)
+        enable_authentication
+        ;;
+    stop-all)
+        stop_all
+        ;;
+    restart)
+        restart_collectors
+        ;;
+    status)
+        show_status
+        ;;
+    resources)
+        show_resources
+        ;;
+    autostart)
+        enable_autostart
+        ;;
+    no-autostart)
+        disable_autostart
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    "")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac

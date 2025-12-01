@@ -1,0 +1,49 @@
+# Add data directories to gitignore
+data/models/*.pkl
+data/databases/*.db
+data/logs/*.log
+
+# InfluxDB data
+*.influxdb/
+
+# Redis dumps
+dump.rdb
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Rust
+collectors/**/target/
+collectors/**/*.lock
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.Thumbs.db
+
+# Secrets
+config/secrets.yml
+*.key
+*.pem
+
+# Temporary
+*.tmp
+*.temp
+.cache/
+
+# Developer mode (NEVER commit these!)
+config/dev_mode.yml
+.seclyzer_dev_mode.log
+/tmp/.seclyzer_dev_mode

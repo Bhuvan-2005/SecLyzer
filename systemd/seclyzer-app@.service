@@ -1,0 +1,21 @@
+[Unit]
+Description=SecLyzer App Monitor Collector
+After=redis.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/Documents/Projects/SecLyzer
+ExecStart=/home/%i/Documents/Projects/SecLyzer/collectors/app_monitor/target/release/app_monitor
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/seclyzer/app_monitor.log
+StandardError=append:/var/log/seclyzer/app_monitor.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

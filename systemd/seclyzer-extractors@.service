@@ -1,0 +1,21 @@
+[Unit]
+Description=SecLyzer Feature Extractors (Python)
+After=redis.service seclyzer-keyboard@%i.service seclyzer-mouse@%i.service seclyzer-app@%i.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/Documents/Projects/SecLyzer
+ExecStart=/home/%i/Documents/Projects/SecLyzer/scripts/start_extractors.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/seclyzer/extractors.log
+StandardError=append:/var/log/seclyzer/extractors.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

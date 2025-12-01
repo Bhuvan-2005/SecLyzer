@@ -1,0 +1,74 @@
+# Database Configuration
+database:
+  influxdb:
+    url: "http://127.0.0.1:8086"
+    org: "seclyzer"
+    bucket: "behavioral_data"
+    token: "CHANGE_ME_AFTER_SETUP"
+  
+  sqlite:
+    path: "data/databases/seclyzer.db"
+
+# Redis Configuration
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0
+  max_memory: "256mb"
+
+# Model Configuration
+models:
+  keystroke:
+    path: "data/models/keystroke_rf.pkl"
+    feature_count: 140
+  
+  mouse:
+    path: "data/models/mouse_svm.pkl"
+    feature_count: 38
+  
+  app_usage:
+    path: "data/models/app_markov.pkl"
+
+# Fusion Configuration
+fusion:
+  weights:
+    keystroke: 0.40
+    mouse: 0.30
+    app_usage: 0.30
+  
+  smoothing_alpha: 0.3  # Exponential smoothing factor
+
+# Decision Thresholds
+decision:
+  thresholds:
+    normal: 90      # Above this = normal operation
+    monitoring: 70  # Below this = log events
+    restricted: 50  # Below this = lock sensitive apps
+    lockdown: 50    # Below this = full screen lock
+  
+  # How many consecutive low scores before action
+  confirmation_count: 3
+
+# Feature Extraction
+extraction:
+  window_size_seconds: 30
+  update_interval_seconds: 5
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  path: "data/logs/seclyzer.log"
+  max_size_mb: 100
+  backup_count: 5
+
+# Privacy Settings
+privacy:
+  store_actual_keys: false       # Only timing, never actual keys
+  hash_app_names: true            # Hash window titles
+  hash_algorithm: "sha256"
+
+# Performance
+performance:
+  collector_sleep_ms: 10          # Keyboard/mouse polling interval
+  max_queue_size: 10000           # Redis queue size limit
+  lazy_load_models: true          # Load models on-demand

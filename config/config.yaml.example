@@ -1,0 +1,69 @@
+# SecLyzer Configuration File
+# Location: /etc/seclyzer/config.yaml or ~/.config/seclyzer/config.yaml
+
+# User Identification
+user:
+  id: "primary"  # Unique identifier for this user
+  
+# Database Configuration
+databases:
+  influxdb:
+    url: "http://localhost:8086"
+    org: "seclyzer"
+    bucket: "seclyzer"
+    # Token stored in secrets.env for security
+    
+  sqlite:
+    path: "/var/lib/seclyzer/databases/seclyzer.db"
+    
+  redis:
+    host: "localhost"
+    port: 6379
+    # Password stored in secrets.env for security
+
+# Feature Extraction Configuration
+extractors:
+  keystroke:
+    window_seconds: 30
+    update_interval: 5
+    enabled: true
+    
+  mouse:
+    window_seconds: 30
+    update_interval: 5
+    enabled: true
+    
+  app:
+    update_interval: 60
+    enabled: true
+
+# ML Model Configuration
+models:
+  keystroke:
+    threshold: 0.5  # Anomaly threshold
+    weight: 0.5     # Weight in trust score fusion
+    
+  mouse:
+    threshold: 0.5
+    weight: 0.3
+    
+  app:
+    threshold: 0.3
+    weight: 0.2
+
+# Trust Scorer Configuration
+trust_scorer:
+  window_size: 10  # Number of recent scores to keep
+  warning_threshold: 0.4
+  alert_threshold: 0.3
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "json"  # json or text
+  
+# Paths (supports XDG base directory specification)
+paths:
+  data_dir: "/var/lib/seclyzer"  # Or $XDG_DATA_HOME/seclyzer
+  config_dir: "/etc/seclyzer"    # Or $XDG_CONFIG_HOME/seclyzer
+  log_dir: "/var/log/seclyzer"   # Or $XDG_CACHE_HOME/seclyzer/logs

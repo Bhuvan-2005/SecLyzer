@@ -1,0 +1,571 @@
+#!/bin/bash
+# SecLyzer Developer Management Script
+# Advanced control panel for developers
+
+set -e
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m'
+
+# Paths
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_PATH="${VENV_PATH:-$HOME/Documents/Projects/venv}"
+LOG_DIR="/var/log/seclyzer"
+
+show_banner() {
+    echo -e "${CYAN}"
+    echo "╔════════════════════════════════════════════════════════╗"
+    echo "║           SecLyzer Developer Console                   ║"
+    echo "║                                                        ║"
+    echo "║  Advanced management tool for SecLyzer development    ║"
+    echo "╚════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+show_help() {
+    show_banner
+    echo "USAGE: $0 <command> [options]"
+    echo ""
+    echo -e "${CYAN}SERVICE MANAGEMENT:${NC}"
+    echo "  start              - Start all collectors and extractors"
+    echo "  stop               - Stop all SecLyzer processes"
+    echo "  restart            - Restart all services"
+    echo "  status             - Show detailed status of all components"
+    echo "  logs               - Tail all logs in real-time"
+    echo ""
+    echo -e "${CYAN}DEVELOPMENT:${NC}"
+    echo "  test               - Run pytest suite (if tests/ directory is present)"
+    echo "  test-coverage      - Run tests with coverage report (if tests/ directory is present)"
+    echo "  lint               - Run linters (black, flake8, mypy)"
+    echo "  format             - Auto-format code (black, isort)"
+    echo "  check-health       - Verify all dependencies"
+    echo ""
+    echo -e "${CYAN}DATA & MODELS:${NC}"
+    echo "  check-data         - Check training data readiness (if scripts/check_training_readiness.py is present)"
+    echo "  train              - Train models (if scripts/train_models.py is present; prompts for confirmation)"
+    echo "  export-data        - Export collected data to CSV"
+    echo "  backup             - Create system backup"
+    echo ""
+    echo -e "${CYAN}DEBUGGING:${NC}"
+    echo "  debug-redis        - Monitor Redis Pub/Sub"
+    echo "  debug-influx       - Test InfluxDB connection"
+    echo "  show-metrics       - Display system metrics"
+    echo "  tail-json-logs     - Parse and display JSON logs"
+    echo ""
+    echo -e "${CYAN}CLEANUP:${NC}"
+    echo "  clean-logs         - Clear old log files"
+    echo "  clean-pycache      - Remove __pycache__ directories"
+    echo "  reset-data         - Reset all collected data (DANGEROUS)"
+    echo ""
+    echo -e "${CYAN}UTILITIES:${NC}"
+    echo "  config             - Show current configuration"
+    echo "  env                - Show environment variables"
+    echo "  version            - Show SecLyzer version info"
+    echo ""
+}
+
+check_dependencies() {
+    local missing=()
+    
+    command -v python3 >/dev/null 2>&1 || missing+=("python3")
+    command -v redis-cli >/dev/null 2>&1 || missing+=("redis")
+    command -v curl >/dev/null 2>&1 || missing+=("curl")
+    
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo -e "${RED}✗ Missing dependencies: ${missing[*]}${NC}"
+        return 1
+    fi
+    
+    if [ ! -d "$VENV_PATH" ]; then
+        echo -e "${RED}✗ Virtual environment not found at: $VENV_PATH${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+cmd_start() {
+    echo -e "${GREEN}Starting SecLyzer services...${NC}\n"
+    
+    # Start collectors
+    if [ -x "./scripts/start_collectors.sh" ]; then
+        ./scripts/start_collectors.sh
+    else
+        echo -e "${YELLOW}⚠ start_collectors.sh not found${NC}"
+    fi
+    
+    echo ""
+    
+    # Start Python feature extractors
+    if [ -x "./scripts/start_extractors.sh" ]; then
+        ./scripts/start_extractors.sh
+    else
+        echo -e "${YELLOW}⚠ start_extractors.sh not found${NC}"
+    fi
+    
+    echo -e "\n${GREEN}✓ All services started${NC}"
+}
+
+cmd_stop() {
+    echo -e "${RED}Stopping SecLyzer services...${NC}\n"
+    
+    # Stop Rust extractors
+    pkill -f "keystroke_extractor" && echo "  ✓ Stopped keystroke extractor" || true
+    pkill -f "mouse_extractor" && echo "  ✓ Stopped mouse extractor" || true
+    pkill -f "app_tracker" && echo "  ✓ Stopped app tracker" || true
+    
+    # Stop collectors
+    pkill -f "keyboard_collector" && echo "  ✓ Stopped keyboard collector" || true
+    pkill -f "mouse_collector" && echo "  ✓ Stopped mouse collector" || true
+    pkill -f "app_monitor" && echo "  ✓ Stopped app monitor" || true
+    
+    echo -e "\n${GREEN}✓ All services stopped${NC}"
+}
+
+cmd_status() {
+    echo -e "${BLUE}═══ SecLyzer System Status ═══${NC}\n"
+    
+    echo -e "${CYAN}Rust Collectors:${NC}"
+    pgrep -f keyboard_collector > /dev/null && echo -e "  ${GREEN}✓${NC} keyboard_collector" || echo -e "  ${RED}✗${NC} keyboard_collector"
+    pgrep -f mouse_collector > /dev/null && echo -e "  ${GREEN}✓${NC} mouse_collector" || echo -e "  ${RED}✗${NC} mouse_collector"
+    pgrep -f app_monitor > /dev/null && echo -e "  ${GREEN}✓${NC} app_monitor" || echo -e "  ${RED}✗${NC} app_monitor"
+    
+    echo ""
+    echo -e "${CYAN}Feature Extractors (Python):${NC}"
+    pgrep -f "keystroke_extractor" > /dev/null && echo -e "  ${GREEN}✓${NC} keystroke_extractor" || echo -e "  ${RED}✗${NC} keystroke_extractor"
+    pgrep -f "mouse_extractor" > /dev/null && echo -e "  ${GREEN}✓${NC} mouse_extractor" || echo -e "  ${RED}✗${NC} mouse_extractor"
+    pgrep -f "app_tracker" > /dev/null && echo -e "  ${GREEN}✓${NC} app_tracker" || echo -e "  ${RED}✗${NC} app_tracker"
+    
+    echo ""
+    echo -e "${CYAN}Databases:${NC}"
+    redis-cli ping > /dev/null 2>&1 && echo -e "  ${GREEN}✓${NC} Redis (healthy)" || echo -e "  ${RED}✗${NC} Redis (down)"
+    curl -s http://localhost:8086/ping > /dev/null && echo -e "  ${GREEN}✓${NC} InfluxDB (healthy)" || echo -e "  ${RED}✗${NC} InfluxDB (down)"
+    [ -f "/var/lib/seclyzer/databases/seclyzer.db" ] && echo -e "  ${GREEN}✓${NC} SQLite (file exists)" || echo -e "  ${YELLOW}⚠${NC} SQLite (not found)"
+    
+    echo ""
+}
+
+cmd_logs() {
+    echo -e "${CYAN}Tailing all SecLyzer logs...${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+    tail -f $LOG_DIR/*.log 2>/dev/null || echo "No logs found in $LOG_DIR"
+}
+
+cmd_test() {
+    echo -e "${CYAN}Running test suite...${NC}\n"
+    cd "$PROJECT_ROOT"
+    if [ ! -d "tests" ]; then
+        echo -e "${YELLOW}⚠ Test suite directory 'tests/' is not present in this Phase 3 snapshot${NC}"
+        echo "   Add a tests/ directory before using './scripts/dev test'."
+        return 1
+    fi
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    pytest tests/ -v
+}
+
+cmd_test_coverage() {
+    echo -e "${CYAN}Running tests with coverage...${NC}\n"
+    cd "$PROJECT_ROOT"
+    if [ ! -d "tests" ]; then
+        echo -e "${YELLOW}⚠ Test suite directory 'tests/' is not present in this Phase 3 snapshot${NC}"
+        echo "   Add a tests/ directory before using './scripts/dev test-coverage'."
+        return 1
+    fi
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    pytest tests/ --cov=. --cov-report=html --cov-report=term
+    echo -e "\n${GREEN}✓ Coverage report: htmlcov/index.html${NC}"
+}
+
+cmd_lint() {
+    echo -e "${CYAN}Running linters...${NC}\n"
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    
+    echo "➤ Black (format check)..."
+    black --check . || true
+    
+    echo -e "\n➤ Flake8..."
+    flake8 . --extend-ignore=E501 --exclude=venv,__pycache__ || true
+    
+    echo -e "\n➤ MyPy..."
+    mypy --ignore-missing-imports common/ processing/ training/ inference/ || true
+}
+
+cmd_format() {
+    echo -e "${CYAN}Auto-formatting code...${NC}\n"
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    
+    echo "➤ Black..."
+    black .
+    
+    echo -e "\n➤ isort..."
+    isort .
+    
+    echo -e "\n${GREEN}✓ Code formatted${NC}"
+}
+
+cmd_train() {
+    echo -e "${YELLOW}⚠ This will train new models using collected data${NC}"
+    read -p "Continue? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        cd "$PROJECT_ROOT"
+        if [ ! -f "scripts/train_models.py" ]; then
+            echo -e "${YELLOW}⚠ Training script 'scripts/train_models.py' is not present in this Phase 3 snapshot${NC}"
+            echo "   See PHASE3_REVIEW.md and NEXT_AGENT_HANDOVER.md for the training design."
+            return 1
+        fi
+        source "$VENV_PATH/bin/activate"
+        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        python3 scripts/train_models.py --all --days 30
+    else
+        echo "Cancelled"
+    fi
+}
+
+cmd_check_data() {
+    cd "$PROJECT_ROOT"
+    if [ ! -f "scripts/check_training_readiness.py" ]; then
+        echo -e "${YELLOW}⚠ scripts/check_training_readiness.py is not present in this Phase 3 snapshot${NC}"
+        echo "   See PHASE3_REVIEW.md and NEXT_AGENT_HANDOVER.md for data readiness criteria."
+        return 1
+    fi
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    python3 scripts/check_training_readiness.py
+}
+
+cmd_debug_redis() {
+    echo -e "${CYAN}Monitoring Redis channel: seclyzer:events${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+    redis-cli SUBSCRIBE seclyzer:events
+}
+
+cmd_show_metrics() {
+    echo -e "${BLUE}═══ System Metrics ═══${NC}\n"
+    
+    # Process count
+    echo -e "${CYAN}Running Processes:${NC}"
+    echo "  Collectors: $(pgrep -f "collector|app_monitor" | wc -l)"
+    echo "  Extractors: $(pgrep -f "keystroke_extractor|mouse_extractor|app_tracker" | grep -v grep | wc -l)"
+    
+    # Memory usage
+    echo -e "\n${CYAN}Memory Usage (MB):${NC}"
+    ps aux | grep -E "(collector|extractor|app_)" | grep -v grep | awk '{sum+=$6} END {printf "  Total: %.1f MB\n", sum/1024}'
+    
+    # Data counts
+    echo -e "\n${CYAN}Data Collection:${NC}"
+    cmd_check_data 2>&1 | grep -E "(Keystroke|Mouse|App)" || echo "  (Run check-data for details)"
+}
+
+cmd_tail_json_logs() {
+    echo -e "${CYAN}Parsing JSON logs...${NC}\n"
+    tail -f $LOG_DIR/*.log 2>/dev/null | while read line; do
+        if [[ $line =~ ^\{ ]]; then
+            echo "$line" | python3 -m json.tool --compact 2>/dev/null || echo "$line"
+        else
+            echo -e "${YELLOW}$line${NC}"
+        fi
+    done
+}
+
+cmd_config() {
+    echo -e "${BLUE}═══ Configuration ═══${NC}\n"
+    
+    echo -e "${CYAN}Environment Variables:${NC}"
+    env | grep -E "^(SECLYZER_|REDIS_|INFLUX_)" | sort || echo "  (none set)"
+    
+    echo -e "\n${CYAN}Config Files:${NC}"
+    [ -f "/etc/seclyzer/config.yaml" ] && echo "  ✓ /etc/seclyzer/config.yaml" || echo "  ✗ /etc/seclyzer/config.yaml"
+    [ -f "$HOME/.config/seclyzer/config.yaml" ] && echo "  ✓ ~/.config/seclyzer/config.yaml" || echo "  ✗ ~/.config/seclyzer/config.yaml"
+    [ -f "$PROJECT_ROOT/config/config.yaml.example" ] && echo "  ✓ config/config.yaml.example" || echo "  ✗ config/config.yaml.example"
+}
+
+cmd_clean_logs() {
+    echo -e "${YELLOW}Cleaning old logs...${NC}"
+    find $LOG_DIR -name "*.log" -mtime +7 -delete 2>/dev/null && echo "✓ Cleaned logs older than 7 days" || echo "No old logs found"
+}
+
+cmd_clean_pycache() {
+    echo -e "${YELLOW}Removing __pycache__ directories...${NC}"
+    find "$PROJECT_ROOT" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+    echo "✓ Cleaned __pycache__"
+}
+
+cmd_check_health() {
+    echo -e "${CYAN}Checking system health...${NC}\n"
+    
+    local issues=0
+    
+    # Python
+    if command -v python3 >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Python3: $(python3 --version)"
+    else
+        echo -e "  ${RED}✗${NC} Python3 not found"
+        ((issues++))
+    fi
+    
+    # Virtual environment
+    if [ -d "$VENV_PATH" ]; then
+        echo -e "  ${GREEN}✓${NC} Venv: $VENV_PATH"
+    else
+        echo -e "  ${RED}✗${NC} Venv not found at $VENV_PATH"
+        ((issues++))
+    fi
+    
+    # Redis
+    if redis-cli ping >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Redis running"
+    else
+        echo -e "  ${RED}✗${NC} Redis not running"
+        ((issues++))
+    fi
+    
+    # InfluxDB
+    if curl -s http://localhost:8086/ping >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} InfluxDB running"
+    else
+        echo -e "  ${RED}✗${NC} InfluxDB not running"
+        ((issues++))
+    fi
+    
+    # Rust
+    if command -v cargo >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Rust: $(cargo --version | cut -d' ' -f2)"
+    else
+        echo -e "  ${YELLOW}⚠${NC} Rust/Cargo not found (needed for collector builds)"
+    fi
+    
+    echo ""
+    if [ $issues -eq 0 ]; then
+        echo -e "${GREEN}✓ All critical dependencies OK${NC}"
+    else
+        echo -e "${RED}✗ Found $issues issue(s)${NC}"
+        return 1
+    fi
+}
+
+cmd_env() {
+    echo -e "${BLUE}═══ Environment Variables ═══${NC}\n"
+    
+    echo -e "${CYAN}SecLyzer Variables:${NC}"
+    env | grep -E "^SECLYZER_" | sort || echo "  (none)"
+    
+    echo -e "\n${CYAN}Redis Variables:${NC}"
+    env | grep -E "^REDIS_" | sort || echo "  (none)"
+    
+    echo -e "\n${CYAN}InfluxDB Variables:${NC}"
+    env | grep -E "^INFLUX_" | sort || echo "  (none)"
+    
+    echo -e "\n${CYAN}System Paths:${NC}"
+    echo "  PROJECT_ROOT=$PROJECT_ROOT"
+    echo "  VENV_PATH=$VENV_PATH"
+    echo "  LOG_DIR=$LOG_DIR"
+}
+
+cmd_version() {
+    echo -e "${BLUE}═══ SecLyzer Version Info ═══${NC}\n"
+    
+    echo "Version: 0.2.0 (Phase 3 - Model Training Infrastructure)"
+    echo "Status: Phase 3 snapshot (data collection + training infrastructure; inference and hardening planned)"
+    
+    echo -e "\n${CYAN}Components:${NC}"
+    echo "  Collectors: 3 (Rust)"
+    echo "  Extractors: 3 (Python)"
+    echo "  ML Models: Keystroke, Mouse, App (training scripts planned)"
+    echo "  Inference: Planned (not active in this snapshot)"
+    
+    echo -e "\n${CYAN}Git Info:${NC}"
+    if [ -d ".git" ]; then
+        echo "  Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+        echo "  Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+    else
+        echo "  (not a git repository)"
+    fi
+}
+
+cmd_export_data() {
+    echo -e "${CYAN}Exporting collected data...${NC}\n"
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    # Create exports directory
+    mkdir -p exports
+    
+    echo "Creating export script..."
+    cat > /tmp/export_influx.py << 'EOF'
+import sys
+sys.path.insert(0, '.')
+from storage.timeseries import get_timeseries_db
+from datetime import datetime, timedelta
+import csv
+
+db = get_timeseries_db()
+
+# Export keystroke data
+end_time = datetime.now()
+start_time = end_time - timedelta(days=30)
+
+print("Exporting keystroke data...")
+result = db.query_keystroke_features(start_time=start_time, end_time=end_time, user_id="primary")
+print(f"Exported {len(result) if result else 0} keystroke records")
+print("\nNote: Full CSV export requires additional implementation")
+EOF
+    
+    python3 /tmp/export_influx.py
+}
+
+cmd_debug_influx() {
+    echo -e "${CYAN}Testing InfluxDB connection...${NC}\n"
+    
+    # Test ping
+    if curl -s http://localhost:8086/ping >/dev/null; then
+        echo -e "  ${GREEN}✓${NC} InfluxDB is responding"
+    else
+        echo -e "  ${RED}✗${NC} InfluxDB not responding"
+        return 1
+    fi
+    
+    # Test query
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    python3 << 'EOF'
+try:
+    from storage.timeseries import get_timeseries_db
+    db = get_timeseries_db()
+    print("  ✓ InfluxDB client initialized")
+    print("  ✓ Connection test passed")
+except Exception as e:
+    print(f"  ✗ Error: {e}")
+    exit(1)
+EOF
+}
+
+cmd_backup() {
+    if [ -x "./scripts/backup_system.sh" ]; then
+        echo -e "${CYAN}Creating system backup...${NC}\n"
+        ./scripts/backup_system.sh
+    else
+        echo -e "${YELLOW}⚠ backup_system.sh not found or not executable${NC}"
+    fi
+}
+
+cmd_reset_data() {
+    echo -e "${RED}⚠⚠⚠ WARNING ⚠⚠⚠${NC}"
+    echo "This will DELETE all collected data!"
+    echo "  - InfluxDB data (all measurements)"
+    echo "  - SQLite database"
+    echo "  - Trained models"
+    echo ""
+    read -p "Type 'DELETE' to confirm: " confirmation
+    
+    if [ "$confirmation" = "DELETE" ]; then
+        echo -e "${RED}Resetting data...${NC}"
+        
+        # Note: Actual implementation would require InfluxDB drop commands
+        echo "⚠ Full reset requires manual InfluxDB bucket deletion"
+        echo "Run: influx delete --bucket seclyzer --start 1970-01-01T00:00:00Z --stop $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    else
+        echo "Cancelled"
+    fi
+}
+
+# Main command dispatcher
+cd "$PROJECT_ROOT"
+
+case "${1:-help}" in
+    start)
+        check_dependencies && cmd_start
+        ;;
+    stop)
+        cmd_stop
+        ;;
+    restart)
+        cmd_stop
+        sleep 1
+        cmd_start
+        ;;
+    status)
+        cmd_status
+        ;;
+    logs)
+        cmd_logs
+        ;;
+    test)
+        check_dependencies && cmd_test
+        ;;
+    test-coverage)
+        check_dependencies && cmd_test_coverage
+        ;;
+    lint)
+        check_dependencies && cmd_lint
+        ;;
+    format)
+        check_dependencies && cmd_format
+        ;;
+    check-data)
+        check_dependencies && cmd_check_data
+        ;;
+    train)
+        check_dependencies && cmd_train
+        ;;
+    debug-redis)
+        cmd_debug_redis
+        ;;
+    show-metrics)
+        cmd_show_metrics
+        ;;
+    tail-json-logs)
+        cmd_tail_json_logs
+        ;;
+    config)
+        cmd_config
+        ;;
+    clean-logs)
+        cmd_clean_logs
+        ;;
+    clean-pycache)
+        cmd_clean_pycache
+        ;;
+    check-health)
+        cmd_check_health
+        ;;
+    env)
+        cmd_env
+        ;;
+    version)
+        cmd_version
+        ;;
+    export-data)
+        check_dependencies && cmd_export_data
+        ;;
+    debug-influx)
+        cmd_debug_influx
+        ;;
+    backup)
+        cmd_backup
+        ;;
+    reset-data)
+        cmd_reset_data
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}\n"
+        show_help
+        exit 1
+        ;;
+esac
