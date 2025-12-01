@@ -35,7 +35,9 @@ def test_load_from_yaml_file(tmp_path):
 
 
 def test_influx_config_env_overrides(tmp_path, monkeypatch):
-    config_data = {"databases": {"influxdb": {"url": "http://local", "org": "o", "bucket": "b"}}}
+    config_data = {
+        "databases": {"influxdb": {"url": "http://local", "org": "o", "bucket": "b"}}
+    }
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config_data))
     cfg = get_config()

@@ -88,6 +88,7 @@ Comprehensive development console with advanced features for developers working 
 | `lint` | Run linters (black, flake8, mypy) |
 | `format` | Auto-format code (black + isort) |
 | `check-health` | Verify all dependencies installed |
+| `smoke-test` | Run a quick smoke test for core services (dependencies + InfluxDB client) |
 
 #### 📊 Data & Models
 | Command | Description |
@@ -322,6 +323,9 @@ ps aux | grep collector
 
 # Check status
 ./scripts/dev status
+
+# Quick smoke test of core services
+./scripts/dev smoke-test
 
 # Run tests before committing
 ./scripts/dev test

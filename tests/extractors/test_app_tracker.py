@@ -1,6 +1,6 @@
+import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-import time
 
 from processing.extractors.app_tracker import AppTracker
 
