@@ -1,6 +1,6 @@
 # SecLyzer Control Scripts Documentation
 
-**Last Updated:** 2025-12-01  
+**Last Updated:** 2025-12-02  
 **Version:** 0.2.0
 
 ---
@@ -118,6 +118,12 @@ Comprehensive development console with advanced features for developers working 
 | `config` | Show current configuration |
 | `env` | Display SecLyzer environment variables |
 | `version` | Show version information |
+
+#### 🌿 Git Utilities
+| Command | Description |
+|---------|-------------|
+| `backup-git` | Commit changes and push a timestamped backup branch to origin |
+| `rollback-git` | Discard local changes and reset the working tree to the last commit (`git reset --hard HEAD`, with confirmation) |
 
 ### Examples
 

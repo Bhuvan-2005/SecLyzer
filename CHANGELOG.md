@@ -40,6 +40,7 @@ All notable changes to SecLyzer will be documented in this file.
 - Updated `scripts/dev` to align with this Phase 3 snapshot:
   - Starts Rust collectors via `scripts/start_collectors.sh` and Python feature extractors via `scripts/start_extractors.sh`.
   - Added graceful checks for optional components so `test`, `test-coverage`, `check-data`, and `train` report clear messages when `tests/` or training scripts are not present.
+  - Added a safe rollback utility command `rollback-git` that runs `git reset --hard HEAD` with an interactive confirmation prompt.
 - Clarified `scripts/seclyzer` messaging so it no longer claims an active inference/decision engine in this snapshot while keeping data-collection control intact.
 - Updated systemd units (`systemd/seclyzer-app@.service`, `systemd/seclyzer-extractors@.service`) to reflect Rust collectors plus Python extractors.
 - Updated documentation (`docs/CONTROL_SCRIPTS.md`, `README.md`) to match the current set of available commands and remove references to removed test reports and Rust-only tooling.
