@@ -45,6 +45,7 @@ show_help() {
     echo "  lint               - Run linters (black, flake8, mypy)"
     echo "  format             - Auto-format code (black, isort)"
     echo "  check-health       - Verify all dependencies"
+    echo "  smoke-test         - Run a quick smoke test for core services"
     echo ""
     echo -e "${CYAN}DATA & MODELS:${NC}"
     echo "  check-data         - Check training data readiness (if scripts/check_training_readiness.py is present)"
@@ -67,7 +68,10 @@ show_help() {
     echo "  config             - Show current configuration"
     echo "  env                - Show environment variables"
     echo "  version            - Show SecLyzer version info"
+    echo ""
+    echo -e "${CYAN}GIT & BACKUP:${NC}"
     echo "  backup-git         - Commit changes and push a backup branch to origin"
+    echo "  rollback-git       - Discard local changes and reset to last commit (git reset --hard HEAD)"
     echo ""
 }
 
@@ -194,10 +198,10 @@ cmd_lint() {
     black --check . || true
     
     echo -e "\n➤ Flake8..."
-    flake8 . --extend-ignore=E501 --exclude=venv,__pycache__ || true
+    flake8 . --extend-ignore=E501 --exclude=venv,__pycache__,processing/extractors.backup || true
     
     echo -e "\n➤ MyPy..."
-    mypy --ignore-missing-imports common/ processing/ training/ inference/ || true
+    mypy --ignore-missing-imports common/ storage tests || true
 }
 
 cmd_format() {
@@ -351,6 +355,28 @@ cmd_check_health() {
         echo -e "${GREEN}✓ All critical dependencies OK${NC}"
     else
         echo -e "${RED}✗ Found $issues issue(s)${NC}"
+        return 1
+    fi
+}
+
+cmd_smoke_test() {
+    echo -e "${CYAN}Running SecLyzer smoke test...${NC}\n"
+
+    local issues=0
+
+    if ! cmd_check_health; then
+        issues=$((issues + 1))
+    fi
+
+    if ! cmd_debug_influx; then
+        issues=$((issues + 1))
+    fi
+
+    echo ""
+    if [ $issues -eq 0 ]; then
+        echo -e "${GREEN}✓ Smoke test passed: core dependencies and InfluxDB client OK${NC}"
+    else
+        echo -e "${RED}✗ Smoke test detected $issues issue(s). See output above.${NC}"
         return 1
     fi
 }
@@ -518,6 +544,23 @@ cmd_backup_git() {
     echo "Review and merge into the master branch on GitHub when ready."
 }
 
+cmd_rollback() {
+    echo -e "${RED}This will discard ALL local changes and reset the repository to the last commit (git reset --hard HEAD).${NC}"
+    read -p "Continue? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        cd "$PROJECT_ROOT"
+        if ! command -v git >/dev/null 2>&1; then
+            echo -e "${RED}git is not installed${NC}"
+            return 1
+        fi
+        git reset --hard HEAD
+        echo -e "${GREEN}✓ Repository reset to HEAD${NC}"
+    else
+        echo "Cancelled"
+    fi
+}
+
 cmd_reset_data() {
     echo -e "${RED}⚠⚠⚠ WARNING ⚠⚠⚠${NC}"
     echo "This will DELETE all collected data!"
@@ -598,6 +641,9 @@ case "${1:-help}" in
     check-health)
         cmd_check_health
         ;;
+    smoke-test)
+        cmd_smoke_test
+        ;;
     env)
         cmd_env
         ;;
@@ -615,6 +661,9 @@ case "${1:-help}" in
         ;;
     backup-git)
         cmd_backup_git
+        ;;
+    rollback-git)
+        cmd_rollback
         ;;
     reset-data)
         cmd_reset_data

@@ -2,12 +2,45 @@
 
 All notable changes to SecLyzer will be documented in this file.
 
+## [PYTHON 3.12+ COMPATIBILITY & CODE CLEANUP] - 2025-12-01 12:39 IST
+
+### Fixed
+- **DeprecationWarnings (Python 3.12+ compatibility)**:
+  - Replaced `datetime.utcnow()` with `datetime.now(timezone.utc)` in:
+    - `common/logger.py`
+    - `processing/extractors/keystroke_extractor.py`
+    - `processing/extractors/mouse_extractor.py`
+    - `storage/timeseries.py` (5 occurrences)
+    - `tests/storage/test_timeseries.py`
+  - Replaced `datetime.utcfromtimestamp()` with `datetime.fromtimestamp(ts, tz=timezone.utc)` in:
+    - `processing/extractors/app_tracker.py`
+    - `tests/extractors/test_app_tracker.py`
+  - Fixed SQLite datetime adapter deprecation:
+    - Added custom `adapt_datetime()` and `convert_datetime()` functions in `storage/database.py`
+    - Registered adapters with sqlite3 module for Python 3.12+ compatibility
+    - Updated connection to use `detect_types=sqlite3.PARSE_DECLTYPES`
+
+### Removed
+- **Non-essential documentation**:
+  - `ARCHITECTURE_OPTIMIZED.md` (draft version, kept `ARCHITECTURE.md`)
+  - `PHASE3_REVIEW.md` (review notes, not needed in production)
+  - `COMPREHENSIVE_AUDIT_REPORT.md` (audit notes, not needed in production)
+  - `FIX_INPUT_PERMISSIONS.md` (temporary fix documentation)
+  - `admin (self)/` directory with credentials (security cleanup)
+
+### Verified
+- ✅ All 32 unit tests passing
+- ✅ Only 1 external dependency warning remaining (dateutil, outside our control)
+- ✅ No regressions in core functionality
+- ✅ All datetime operations now timezone-aware UTC
+
 ## [CONTROL SCRIPTS ALIGNMENT] - 2025-12-01 16:17 IST
 
 ### Changed
 - Updated `scripts/dev` to align with this Phase 3 snapshot:
   - Starts Rust collectors via `scripts/start_collectors.sh` and Python feature extractors via `scripts/start_extractors.sh`.
   - Added graceful checks for optional components so `test`, `test-coverage`, `check-data`, and `train` report clear messages when `tests/` or training scripts are not present.
+  - Added a safe rollback utility command `rollback-git` that runs `git reset --hard HEAD` with an interactive confirmation prompt.
 - Clarified `scripts/seclyzer` messaging so it no longer claims an active inference/decision engine in this snapshot while keeping data-collection control intact.
 - Updated systemd units (`systemd/seclyzer-app@.service`, `systemd/seclyzer-extractors@.service`) to reflect Rust collectors plus Python extractors.
 - Updated documentation (`docs/CONTROL_SCRIPTS.md`, `README.md`) to match the current set of available commands and remove references to removed test reports and Rust-only tooling.

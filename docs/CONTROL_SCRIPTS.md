@@ -1,6 +1,6 @@
 # SecLyzer Control Scripts Documentation
 
-**Last Updated:** 2025-12-01  
+**Last Updated:** 2025-12-02  
 **Version:** 0.2.0
 
 ---
@@ -88,6 +88,7 @@ Comprehensive development console with advanced features for developers working 
 | `lint` | Run linters (black, flake8, mypy) |
 | `format` | Auto-format code (black + isort) |
 | `check-health` | Verify all dependencies installed |
+| `smoke-test` | Run a quick smoke test for core services (dependencies + InfluxDB client) |
 
 #### 📊 Data & Models
 | Command | Description |
@@ -118,6 +119,12 @@ Comprehensive development console with advanced features for developers working 
 | `config` | Show current configuration |
 | `env` | Display SecLyzer environment variables |
 | `version` | Show version information |
+
+#### 🌿 Git Utilities
+| Command | Description |
+|---------|-------------|
+| `backup-git` | Commit changes and push a timestamped backup branch to origin |
+| `rollback-git` | Discard local changes and reset the working tree to the last commit (`git reset --hard HEAD`, with confirmation) |
 
 ### Examples
 
@@ -316,6 +323,9 @@ ps aux | grep collector
 
 # Check status
 ./scripts/dev status
+
+# Quick smoke test of core services
+./scripts/dev smoke-test
 
 # Run tests before committing
 ./scripts/dev test

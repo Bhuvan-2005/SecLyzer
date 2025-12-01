@@ -1,6 +1,6 @@
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
 import time
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 
 from processing.extractors.app_tracker import AppTracker
 
@@ -26,14 +26,14 @@ def test_handle_app_switch_updates_transitions_and_patterns():
     tracker.app_durations = defaultdict(list)
     tracker.time_patterns = defaultdict(lambda: defaultdict(int))
     tracker.current_app = "old_app"
-    tracker.current_app_start = datetime.utcnow() - timedelta(seconds=10)
+    tracker.current_app_start = datetime.now(timezone.utc) - timedelta(seconds=10)
     tracker.recent_events = deque(maxlen=1000)
-    tracker.last_update = datetime.utcnow()
+    tracker.last_update = datetime.now(timezone.utc)
     tracker.ts_db = DummyTS()
     tracker.db = None
     tracker.dev_mode = None
     ts_micro = int(time.time() * 1_000_000)
-    current_time = datetime.utcfromtimestamp(ts_micro / 1_000_000)
+    current_time = datetime.fromtimestamp(ts_micro / 1_000_000, tz=timezone.utc)
     event = {"app_name": "new_app", "ts": ts_micro}
     AppTracker._handle_app_switch(tracker, event)
     assert tracker.current_app == "new_app"

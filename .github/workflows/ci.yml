@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    env:
+      VENV_PATH: ${{ github.workspace }}/.venv
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up virtual environment and install dependencies
+        run: |
+          python -m venv "$VENV_PATH"
+          source "$VENV_PATH/bin/activate"
+          python -m pip install --upgrade pip
+          # Core ML and timeseries dependencies
+          if [ -f requirements_ml.txt ]; then
+            pip install -r requirements_ml.txt
+          fi
+          # Runtime and tooling dependencies used by scripts/dev
+          pip install \
+            redis \
+            polars \
+            influxdb-client \
+            black \
+            flake8 \
+            mypy \
+            isort \
+            pytest \
+            pydantic
+
+      - name: Run linters
+        run: |
+          chmod +x scripts/dev
+          ./scripts/dev lint
+
+      - name: Run tests
+        run: |
+          ./scripts/dev test

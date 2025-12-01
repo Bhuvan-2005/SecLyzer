@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -44,7 +44,7 @@ def make_db(monkeypatch):
 def test_write_keystroke_features_builds_point(monkeypatch):
     db = make_db(monkeypatch)
     features = {"a": 1.0, "b": 2, "ignored": "x"}
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     db.write_keystroke_features(features, user_id="u", device_id="dev", timestamp=now)
     db.write_api.write.assert_called_once()
     args, kwargs = db.write_api.write.call_args
@@ -59,15 +59,15 @@ def test_write_keystroke_features_builds_point(monkeypatch):
 def test_query_keystroke_features_uses_bucket_and_org(monkeypatch):
     db = make_db(monkeypatch)
     fake_record = SimpleNamespace(
-        get_time=lambda: datetime.utcnow(),
+        get_time=lambda: datetime.now(timezone.utc),
         get_field=lambda: "value",
         get_value=lambda: 1.0,
         values={"user_id": "u"},
     )
     fake_table = SimpleNamespace(records=[fake_record])
     db.query_api.query.return_value = [fake_table]
-    start = datetime.utcnow() - timedelta(minutes=5)
-    end = datetime.utcnow()
+    start = datetime.now(timezone.utc) - timedelta(minutes=5)
+    end = datetime.now(timezone.utc)
     result = db.query_keystroke_features(start_time=start, end_time=end, user_id="u")
     db.query_api.query.assert_called_once()
     assert result and result[0]["value"] == 1.0

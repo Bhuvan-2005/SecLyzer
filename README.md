@@ -44,7 +44,7 @@ SecLyzer is a behavioral biometric authentication system that learns your unique
 ### Prerequisites
 
 - **OS:** Linux (Ubuntu 20.04+, Debian, Arch)
-- **Python:** 3.8+
+- **Python:** 3.12+ (required for timezone-aware datetime support)
 - **Rust:** 1.60+ (for building collectors)
 - **Databases:** Redis, InfluxDB
 - **Dependencies:** See `requirements_ml.txt`
@@ -65,6 +65,7 @@ chmod +x install.sh
 
 # 4. Verify
 ./scripts/dev status
+./scripts/dev smoke-test
 ```
 
 ---
@@ -182,7 +183,8 @@ SecLyzer includes a comprehensive developer management script with 20+ commands:
 ./scripts/dev status         # Show detailed status
 
 # Testing
-./scripts/dev test           # Run test suite (36 tests)
+./scripts/dev smoke-test     # Quick smoke test of core services
+./scripts/dev test           # Run test suite (32 tests)
 ./scripts/dev test-coverage  # Generate coverage report
 ./scripts/dev lint           # Run linters
 
@@ -208,6 +210,15 @@ See `docs/CONTROL_SCRIPTS.md` for complete documentation.
 | `docs/CONTROL_SCRIPTS.md` | Complete guide to seclyzer and dev scripts |
 | `CHANGELOG.md` | All changes and releases |
 | `NEXT_AGENT_HANDOVER.md` | System architecture and current state |
+| `SECURITY.md` | Security assumptions, data sensitivity, and hardening guidelines |
+| `PRIVACY.md` | High-level overview of what data SecLyzer processes and stores |
+
+---
+
+## 🔐 Security & Privacy
+
+- See `SECURITY.md` for the threat model, security assumptions, and recommended hardening steps.
+- See `PRIVACY.md` for what behavioral data is collected and how to treat it.
 
 ---
 

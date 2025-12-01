@@ -13,8 +13,17 @@ def _make_df_for_dwell():
     for i in range(3):
         t_press = t0 + i * 0.2
         t_release = t_press + 0.1
-        events.append({"timestamp": t_press, "key": "A", "event_type": "press", "dev_mode": False})
-        events.append({"timestamp": t_release, "key": "A", "event_type": "release", "dev_mode": False})
+        events.append(
+            {"timestamp": t_press, "key": "A", "event_type": "press", "dev_mode": False}
+        )
+        events.append(
+            {
+                "timestamp": t_release,
+                "key": "A",
+                "event_type": "release",
+                "dev_mode": False,
+            }
+        )
     return pl.DataFrame(events)
 
 
@@ -35,8 +44,17 @@ def test_extract_features_basic():
     for i in range(10):
         t_press = now - 1 + i * 0.01
         t_release = t_press + 0.005
-        extractor.events.append({"timestamp": t_press, "key": "A", "event_type": "press", "dev_mode": False})
-        extractor.events.append({"timestamp": t_release, "key": "A", "event_type": "release", "dev_mode": False})
+        extractor.events.append(
+            {"timestamp": t_press, "key": "A", "event_type": "press", "dev_mode": False}
+        )
+        extractor.events.append(
+            {
+                "timestamp": t_release,
+                "key": "A",
+                "event_type": "release",
+                "dev_mode": False,
+            }
+        )
     features = KeystrokeExtractor.extract_features(extractor)
     assert features is not None
     assert "dwell_mean" in features
