@@ -33,6 +33,24 @@ NC='\033[0m'
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Progress tracking file
+PROGRESS_FILE="/tmp/.seclyzer_install_progress"
+
+# Progress tracking functions
+mark_step_done() {
+    local step="$1"
+    echo "$step" >> "$PROGRESS_FILE"
+}
+
+is_step_done() {
+    local step="$1"
+    [ -f "$PROGRESS_FILE" ] && grep -q "^${step}$" "$PROGRESS_FILE" 2>/dev/null
+}
+
+clear_progress() {
+    rm -f "$PROGRESS_FILE"
+}
+
 # Default configuration
 DEFAULT_INSTALL_DIR="/opt/seclyzer"
 DEFAULT_DATA_DIR="/var/lib/seclyzer"
@@ -70,6 +88,15 @@ while [[ $# -gt 0 ]]; do
             SKIP_BUILD=true
             shift
             ;;
+        --resume)
+            # Force resume mode (mainly for debugging)
+            shift
+            ;;
+        --clean)
+            clear_progress
+            echo "Installation progress cleared."
+            exit 0
+            ;;
         --help|-h)
             SHOW_HELP=true
             shift
@@ -93,6 +120,8 @@ if [ "$SHOW_HELP" = true ]; then
     echo "  --no-influxdb     Skip InfluxDB installation"
     echo "  --no-autostart    Don't enable systemd auto-start"
     echo "  --skip-build      Skip building Rust collectors"
+    echo "  --resume          Resume interrupted installation"
+    echo "  --clean           Clear installation progress and exit"
     echo "  --help, -h        Show this help message"
     echo ""
     echo "Environment Variables:"
@@ -225,6 +254,11 @@ show_config() {
 
 # Create directories
 create_directories() {
+    if is_step_done "directories"; then
+        echo -e "${GREEN}✓${NC} Directories already created (skipping)"
+        return
+    fi
+    
     echo "Creating directories..."
     mkdir -p "$INSTALL_DIR"/{bin,lib,scripts}
     mkdir -p "$DATA_DIR"/{databases,models,datasets}
@@ -239,11 +273,17 @@ create_directories() {
     touch "$DATA_DIR/datasets/.gitkeep"
     touch "$DATA_DIR/models/.gitkeep"
     
+    mark_step_done "directories"
     echo -e "${GREEN}✓${NC} Directories created"
 }
 
 # Install system dependencies
 install_dependencies() {
+    if is_step_done "dependencies"; then
+        echo -e "${GREEN}✓${NC} System dependencies already installed (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Installing system dependencies..."
     
@@ -251,10 +291,11 @@ install_dependencies() {
     
     DEPS="build-essential pkg-config libx11-dev libxext-dev libxtst-dev \
           python3 python3-pip python3-venv python3-dev \
-          sqlite3 curl git bc"
+          sqlite3 curl git bc coreutils"
     
     apt-get install -y $DEPS > /dev/null 2>&1
     
+    mark_step_done "dependencies"
     echo -e "${GREEN}✓${NC} System dependencies installed"
 }
 
@@ -262,6 +303,11 @@ install_dependencies() {
 install_redis() {
     if [ "$INSTALL_REDIS" = false ]; then
         echo -e "${YELLOW}⚠${NC} Skipping Redis installation"
+        return
+    fi
+    
+    if is_step_done "redis" && command -v redis-server &> /dev/null; then
+        echo -e "${GREEN}✓${NC} Redis already installed (skipping)"
         return
     fi
     
@@ -275,8 +321,10 @@ install_redis() {
     # Configure Redis
     REDIS_CONF="/etc/redis/redis.conf"
     if [ -f "$REDIS_CONF" ]; then
-        # Backup
-        cp "$REDIS_CONF" "${REDIS_CONF}.bak.$(date +%s)" 2>/dev/null || true
+        # Backup only if not already backed up
+        if [ ! -f "${REDIS_CONF}.bak.seclyzer" ]; then
+            cp "$REDIS_CONF" "${REDIS_CONF}.bak.seclyzer" 2>/dev/null || true
+        fi
         
         # Configure
         sed -i "s/^# maxmemory .*/maxmemory $REDIS_MEMORY/" "$REDIS_CONF"
@@ -289,8 +337,10 @@ install_redis() {
     systemctl enable redis-server > /dev/null 2>&1
     systemctl restart redis-server
     
+    mark_step_done "redis"
     echo -e "${GREEN}✓${NC} Redis installed and configured"
 }
+
 
 # Install InfluxDB
 install_influxdb() {
@@ -299,11 +349,18 @@ install_influxdb() {
         return
     fi
     
+    # Check if already done
+    if is_step_done "influxdb" && command -v influx &> /dev/null; then
+        echo -e "${GREEN}✓${NC} InfluxDB already installed (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Installing InfluxDB..."
     
+    # Install if not present
     if ! command -v influx &> /dev/null; then
-        # Add repository
+        echo "  Adding InfluxDB repository..."
         curl -s https://repos.influxdata.com/influxdata-archive_compat.key | \
             gpg --dearmor > /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg 2>/dev/null
         
@@ -311,62 +368,101 @@ install_influxdb() {
             tee /etc/apt/sources.list.d/influxdata.list > /dev/null
         
         apt-get update -qq
+        echo "  Installing InfluxDB package..."
         apt-get install -y influxdb2 > /dev/null 2>&1
     fi
     
-    systemctl enable influxdb > /dev/null 2>&1
-    systemctl start influxdb
+    # Start service
+    systemctl enable influxdb > /dev/null 2>&1 || true
+    systemctl start influxdb || true
     
-    # Wait for InfluxDB
-    for i in {1..30}; do
-        curl -s http://localhost:8086/ping > /dev/null 2>&1 && break
+    # Wait for InfluxDB to be fully ready (with timeout)
+    echo "  Waiting for InfluxDB to start..."
+    local ready=false
+    for i in {1..60}; do
+        if curl -s http://localhost:8086/api/v2/ping > /dev/null 2>&1; then
+            ready=true
+            break
+        fi
         sleep 1
     done
     
-    # Initialize if not already done
-    if ! influx auth list &> /dev/null 2>&1; then
-        INFLUX_PASSWORD=$(openssl rand -base64 16)
-        
-        influx setup \
-            --org "seclyzer" \
-            --bucket "behavioral_data" \
-            --username "seclyzer_admin" \
-            --password "$INFLUX_PASSWORD" \
-            --retention "30d" \
-            --force > /dev/null 2>&1 || true
-        
-        # Create and save token
-        TEMP_FILE="/tmp/influx_token_$$.json"
-        influx auth create --org "seclyzer" --read-buckets --write-buckets --json > "$TEMP_FILE" 2>/dev/null || true
-        
-        if [ -f "$TEMP_FILE" ]; then
-            INFLUX_TOKEN=$(grep -o '"token": *"[^"]*"' "$TEMP_FILE" 2>/dev/null | cut -d'"' -f4)
-            rm -f "$TEMP_FILE"
-            
-            if [ -n "$INFLUX_TOKEN" ]; then
-                echo "$INFLUX_TOKEN" > "$CONFIG_DIR/influxdb_token"
-                chmod 600 "$CONFIG_DIR/influxdb_token"
-            fi
-        fi
-        
-        # Save credentials
-        echo "INFLUX_PASSWORD=$INFLUX_PASSWORD" >> "$CONFIG_DIR/.credentials"
-        chmod 600 "$CONFIG_DIR/.credentials"
+    if [ "$ready" = false ]; then
+        echo -e "${YELLOW}⚠${NC} InfluxDB may not be fully ready"
     fi
     
+    # Check if already configured
+    if [ -f "$CONFIG_DIR/influxdb_token" ] && [ -s "$CONFIG_DIR/influxdb_token" ]; then
+        echo -e "${GREEN}✓${NC} InfluxDB already configured"
+        mark_step_done "influxdb"
+        return
+    fi
+    
+    # Initialize InfluxDB with timeout to prevent hanging
+    echo "  Initializing InfluxDB..."
+    mkdir -p "$CONFIG_DIR"
+    INFLUX_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    
+    timeout 30 influx setup \
+        --host http://localhost:8086 \
+        --org "seclyzer" \
+        --bucket "behavioral_data" \
+        --username "seclyzer_admin" \
+        --password "$INFLUX_PASSWORD" \
+        --retention 720h \
+        --force 2>/dev/null || {
+            echo -e "${YELLOW}⚠${NC} InfluxDB setup timed out or failed"
+            echo "  Visit http://localhost:8086 to complete setup manually"
+            mark_step_done "influxdb"
+            return
+        }
+    
+    # Create and save token with timeout
+    echo "  Creating API token..."
+    TEMP_FILE="/tmp/influx_token_$$.json"
+    timeout 15 influx auth create \
+        --host http://localhost:8086 \
+        --org "seclyzer" \
+        --read-buckets \
+        --write-buckets \
+        --json > "$TEMP_FILE" 2>/dev/null || true
+    
+    if [ -f "$TEMP_FILE" ] && [ -s "$TEMP_FILE" ]; then
+        INFLUX_TOKEN=$(grep -o '"token": *"[^"]*"' "$TEMP_FILE" 2>/dev/null | cut -d'"' -f4)
+        rm -f "$TEMP_FILE"
+        
+        if [ -n "$INFLUX_TOKEN" ]; then
+            echo "$INFLUX_TOKEN" > "$CONFIG_DIR/influxdb_token"
+            chmod 600 "$CONFIG_DIR/influxdb_token"
+        fi
+    else
+        rm -f "$TEMP_FILE" 2>/dev/null
+    fi
+    
+    # Save credentials
+    echo "INFLUX_PASSWORD=$INFLUX_PASSWORD" >> "$CONFIG_DIR/.credentials"
+    chmod 600 "$CONFIG_DIR/.credentials"
+    
+    mark_step_done "influxdb"
     echo -e "${GREEN}✓${NC} InfluxDB installed and configured"
 }
-
 # Install Rust
 install_rust() {
+    if is_step_done "rust" && sudo -u "$ACTUAL_USER" bash -c 'command -v cargo' &> /dev/null; then
+        echo -e "${GREEN}✓${NC} Rust already installed (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Checking Rust installation..."
     
     if ! sudo -u "$ACTUAL_USER" bash -c 'command -v cargo' &> /dev/null; then
         echo "Installing Rust..."
         sudo -u "$ACTUAL_USER" bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' > /dev/null 2>&1
+        mark_step_done "rust"
         echo -e "${GREEN}✓${NC} Rust installed"
     else
+        mark_step_done "rust"
         echo -e "${GREEN}✓${NC} Rust already installed"
     fi
 }
@@ -378,9 +474,25 @@ build_collectors() {
         return
     fi
     
+    # Check if already built
+    if is_step_done "collectors" && \
+       [ -x "$INSTALL_DIR/bin/keyboard_collector" ] && \
+       [ -x "$INSTALL_DIR/bin/mouse_collector" ] && \
+       [ -x "$INSTALL_DIR/bin/app_monitor" ]; then
+        echo -e "${GREEN}✓${NC} Collectors already built (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Building Rust collectors (this may take 2-5 minutes)..."
     
+    # Ensure Rust is available
+    if ! sudo -u "$ACTUAL_USER" bash -c 'command -v cargo' &> /dev/null; then
+        echo -e "${RED}✗${NC} Rust/Cargo not found. Installing Rust first..."
+        install_rust
+    fi
+    
+    # Build collectors
     sudo -u "$ACTUAL_USER" bash -c "
         source '$ACTUAL_HOME/.cargo/env' 2>/dev/null || true
         cd '$SCRIPT_DIR/collectors/keyboard_collector' && cargo build --release 2>/dev/null
@@ -389,17 +501,24 @@ build_collectors() {
     "
     
     # Copy binaries
+    mkdir -p "$INSTALL_DIR/bin"
     cp "$SCRIPT_DIR/collectors/keyboard_collector/target/release/keyboard_collector" "$INSTALL_DIR/bin/" 2>/dev/null || true
     cp "$SCRIPT_DIR/collectors/mouse_collector/target/release/mouse_collector" "$INSTALL_DIR/bin/" 2>/dev/null || true
     cp "$SCRIPT_DIR/collectors/app_monitor/target/release/app_monitor" "$INSTALL_DIR/bin/" 2>/dev/null || true
     
     chmod +x "$INSTALL_DIR/bin/"* 2>/dev/null || true
     
+    mark_step_done "collectors"
     echo -e "${GREEN}✓${NC} Collectors built"
 }
 
 # Setup Python environment
 setup_python() {
+    if is_step_done "python"; then
+        echo -e "${GREEN}✓${NC} Python environment already set up (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Setting up Python environment..."
     
@@ -415,11 +534,17 @@ setup_python() {
         pip install -q redis polars influxdb-client scikit-learn numpy pydantic onnxruntime joblib
     " 2>/dev/null
     
+    mark_step_done "python"
     echo -e "${GREEN}✓${NC} Python environment ready"
 }
 
 # Setup SQLite database
 setup_sqlite() {
+    if is_step_done "sqlite"; then
+        echo -e "${GREEN}✓${NC} SQLite database already set up (skipping)"
+        return
+    fi
+    
     echo ""
     echo "Setting up SQLite database..."
     
@@ -472,6 +597,7 @@ EOF
     chown "$ACTUAL_USER:$ACTUAL_USER" "$DB_FILE"
     chmod 600 "$DB_FILE"
     
+    mark_step_done "sqlite"
     echo -e "${GREEN}✓${NC} SQLite database ready"
 }
 
@@ -986,6 +1112,22 @@ main() {
     get_actual_user
     set_configuration
     
+    # Check if resuming installation
+    if [ -f "$PROGRESS_FILE" ]; then
+        echo -e "${YELLOW}Found previous installation in progress.${NC}"
+        if [ "$AUTO_MODE" = false ]; then
+            read -p "Resume from where it left off? [Y/n]: " resume
+            if [[ "$resume" =~ ^[Nn]$ ]]; then
+                clear_progress
+                echo "Starting fresh installation..."
+            else
+                echo "Resuming installation..."
+            fi
+        else
+            echo "Auto-resuming installation..."
+        fi
+    fi
+    
     if [ "$AUTO_MODE" = false ]; then
         interactive_config
     fi
@@ -1000,6 +1142,7 @@ main() {
     echo ""
     echo -e "${BLUE}Starting installation...${NC}"
     
+    # Installation steps with progress tracking
     create_directories
     install_dependencies
     install_redis
@@ -1013,6 +1156,9 @@ main() {
     save_metadata
     create_symlinks
     create_uninstaller
+    
+    # Clear progress on successful completion
+    clear_progress
     
     show_completion
 }
