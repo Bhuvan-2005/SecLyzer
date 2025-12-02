@@ -1,4 +1,4 @@
-use rdev::{listen, Event, EventType, Key};
+use rdev::{listen, EventType};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};

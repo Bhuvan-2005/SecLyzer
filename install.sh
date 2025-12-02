@@ -1,337 +1,526 @@
 #!/bin/bash
-# SecLyzer Installation Script
-# Interactive installer with user-configurable options
+# ============================================================================
+# SecLyzer Automated Installation Script
+# Fully automated installation with sensible defaults
+# ============================================================================
+#
+# Usage:
+#   ./install.sh                    # Interactive mode (default)
+#   ./install.sh --auto             # Fully automated with defaults
+#   ./install.sh --auto --no-redis  # Automated without Redis installation
+#   ./install.sh --help             # Show help
+#
+# Environment variables for customization:
+#   SECLYZER_INSTALL_DIR    - Installation directory (default: /opt/seclyzer)
+#   SECLYZER_DATA_DIR       - Data directory (default: /var/lib/seclyzer)
+#   SECLYZER_LOG_DIR        - Log directory (default: /var/log/seclyzer)
+#   SECLYZER_CONFIG_DIR     - Config directory (default: /etc/seclyzer)
+#   SECLYZER_VENV_PATH      - Python venv path (default: auto-detected)
+#   SECLYZER_PASSWORD       - Admin password (default: auto-generated)
+#
+# ============================================================================
 
 set -e
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+CYAN='\033[0;36m'
+NC='\033[0m'
 
-# Default values
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Default configuration
 DEFAULT_INSTALL_DIR="/opt/seclyzer"
 DEFAULT_DATA_DIR="/var/lib/seclyzer"
 DEFAULT_LOG_DIR="/var/log/seclyzer"
 DEFAULT_CONFIG_DIR="/etc/seclyzer"
 DEFAULT_REDIS_MEMORY="256mb"
 
-# User-selected values (will be set during prompts)
-INSTALL_DIR=""
-DATA_DIR=""
-LOG_DIR=""
-CONFIG_DIR=""
-REDIS_MEMORY=""
+# Parse command line arguments
+AUTO_MODE=false
 INSTALL_REDIS=true
+INSTALL_INFLUXDB=true
 ENABLE_AUTOSTART=true
-PYTHON_VENV_PATH="/home/$USER/Documents/Projects/venv"
+SKIP_BUILD=false
+SHOW_HELP=false
 
-echo -e "${BLUE}"
-echo "╔═══════════════════════════════════════════════════╗"
-echo "║                                                   ║"
-echo "║         SecLyzer Installation Wizard             ║"
-echo "║    Behavioral Biometric Authentication System    ║"
-echo "║                                                   ║"
-echo "╚═══════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-echo ""
-echo "This installer will set up SecLyzer on your system."
-echo "You will be prompted to customize installation paths and options."
-echo ""
-
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then 
-    echo -e "${RED}✗ Please run as root (use sudo)${NC}"
-    exit 1
-fi
-
-# Get the actual user (not root)
-ACTUAL_USER=${SUDO_USER:-$USER}
-echo -e "${GREEN}✓${NC} Installing for user: $ACTUAL_USER"
-echo ""
-
-# ===== Installation Path Configuration =====
-echo -e "${YELLOW}=== Installation Paths ===${NC}"
-echo ""
-
-echo "Where should SecLyzer binaries be installed?"
-read -p "Install directory [$DEFAULT_INSTALL_DIR]: " INSTALL_DIR
-INSTALL_DIR=${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}
-
-echo "Where should data (models, databases) be stored?"
-read -p "Data directory [$DEFAULT_DATA_DIR]: " DATA_DIR
-DATA_DIR=${DATA_DIR:-$DEFAULT_DATA_DIR}
-
-echo "Where should logs be stored?"
-read -p "Log directory [$DEFAULT_LOG_DIR]: " LOG_DIR
-LOG_DIR=${LOG_DIR:-$DEFAULT_LOG_DIR}
-
-echo "Where should configuration files be stored?"
-read -p "Config directory [$DEFAULT_CONFIG_DIR]: " CONFIG_DIR
-CONFIG_DIR=${CONFIG_DIR:-$DEFAULT_CONFIG_DIR}
-
-echo ""
-echo -e "${GREEN}✓${NC} Installation paths configured:"
-echo "  Binaries: $INSTALL_DIR"
-echo "  Data: $DATA_DIR"
-echo "  Logs: $LOG_DIR"
-echo "  Config: $CONFIG_DIR"
-echo ""
-
-# ===== Redis Configuration =====
-echo -e "${YELLOW}=== Redis Configuration ===${NC}"
-echo ""
-
-read -p "Install and configure Redis? [Y/n]: " install_redis_response
-if [[ "$install_redis_response" =~ ^[Nn]$ ]]; then
-    INSTALL_REDIS=false
-    echo "⚠ Skipping Redis installation (you'll need to configure it manually)"
-else
-    echo "Redis memory limit (e.g., 256mb, 512mb, 1gb)?"
-    read -p "Memory limit [$DEFAULT_REDIS_MEMORY]: " REDIS_MEMORY
-    REDIS_MEMORY=${REDIS_MEMORY:-$DEFAULT_REDIS_MEMORY}
-    echo -e "${GREEN}✓${NC} Redis will be installed with ${REDIS_MEMORY} memory limit"
-fi
-
-echo ""
-
-# ===== Python Virtual Environment =====
-echo -e "${YELLOW}=== Python Environment ===${NC}"
-echo ""
-
-echo "SecLyzer requires Python packages for ML and data processing."
-read -p "Python virtual environment path [$PYTHON_VENV_PATH]: " user_venv
-PYTHON_VENV_PATH=${user_venv:-$PYTHON_VENV_PATH}
-
-if [ ! -d "$PYTHON_VENV_PATH" ]; then
-    echo -e "${YELLOW}⚠${NC} Virtual environment not found at $PYTHON_VENV_PATH"
-    read -p "Create it now? [Y/n]: " create_venv
-    if [[ ! "$create_venv" =~ ^[Nn]$ ]]; then
-        mkdir -p "$(dirname "$PYTHON_VENV_PATH")"
-        python3 -m venv "$PYTHON_VENV_PATH"
-        echo -e "${GREEN}✓${NC} Created virtual environment"
-    fi
-fi
-
-echo ""
-
-# ===== Auto-start Configuration =====
-echo -e "${YELLOW}=== System Integration ===${NC}"
-echo ""
-
-read -p "Enable auto-start on boot (systemd service)? [Y/n]: " autostart_response
-if [[ "$autostart_response" =~ ^[Nn]$ ]]; then
-    ENABLE_AUTOSTART=false
-    echo "⚠ Auto-start disabled (you'll need to run collectors manually)"
-else
-    echo -e "${GREEN}✓${NC} Auto-start will be enabled"
-fi
-
-echo ""
-
-# ===== SecLyzer Password Setup =====
-echo -e "${YELLOW}=== Security Password ===${NC}"
-echo ""
-echo "Set a password to protect SecLyzer control operations."
-echo "This will be required for:"
-echo "  - Disabling authentication"
-echo "  - Stopping services"
-echo "  - Uninstalling SecLyzer"
-echo ""
-
-SECLYZER_PASSWORD=""
-while true; do
-    read -s -p "Enter SecLyzer password: " SECLYZER_PASSWORD
-    echo ""
-    read -s -p "Confirm password: " SECLYZER_PASSWORD_CONFIRM
-    echo ""
-    
-    if [ "$SECLYZER_PASSWORD" == "$SECLYZER_PASSWORD_CONFIRM" ]; then
-        if [ ${#SECLYZER_PASSWORD} -lt 6 ]; then
-            echo -e "${RED}✗ Password must be at least 6 characters${NC}"
-            continue
-        fi
-        echo -e "${GREEN}✓${NC} Password set"
-        break
-    else
-        echo -e "${RED}✗ Passwords do not match, try again${NC}"
-    fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto|-a)
+            AUTO_MODE=true
+            shift
+            ;;
+        --no-redis)
+            INSTALL_REDIS=false
+            shift
+            ;;
+        --no-influxdb)
+            INSTALL_INFLUXDB=false
+            shift
+            ;;
+        --no-autostart)
+            ENABLE_AUTOSTART=false
+            shift
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+        --help|-h)
+            SHOW_HELP=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            exit 1
+            ;;
+    esac
 done
 
-# Hash the password
-SECLYZER_PASSWORD_HASH=$(echo -n "$SECLYZER_PASSWORD" | sha256sum | cut -d' ' -f1)
-
-echo ""
-
-# ===== Confirmation =====
-echo -e "${YELLOW}=== Installation Summary ===${NC}"
-echo ""
-echo "Installation Directory: $INSTALL_DIR"
-echo "Data Directory: $DATA_DIR"
-echo "Log Directory: $LOG_DIR"
-echo "Config Directory: $CONFIG_DIR"
-echo "Redis Installation: $INSTALL_REDIS"
-if [ "$INSTALL_REDIS" = true ]; then
-    echo "  Memory Limit: $REDIS_MEMORY"
-fi
-echo "Python Venv: $PYTHON_VENV_PATH"
-echo "Auto-start: $ENABLE_AUTOSTART"
-echo ""
-
-read -p "Proceed with installation? [Y/n]: " confirm
-if [[ "$confirm" =~ ^[Nn]$ ]]; then
-    echo "Installation cancelled."
+# Show help
+if [ "$SHOW_HELP" = true ]; then
+    echo "SecLyzer Installation Script"
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --auto, -a        Fully automated installation with defaults"
+    echo "  --no-redis        Skip Redis installation"
+    echo "  --no-influxdb     Skip InfluxDB installation"
+    echo "  --no-autostart    Don't enable systemd auto-start"
+    echo "  --skip-build      Skip building Rust collectors"
+    echo "  --help, -h        Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  SECLYZER_INSTALL_DIR    Installation directory"
+    echo "  SECLYZER_DATA_DIR       Data directory"
+    echo "  SECLYZER_LOG_DIR        Log directory"
+    echo "  SECLYZER_CONFIG_DIR     Config directory"
+    echo "  SECLYZER_VENV_PATH      Python virtual environment path"
+    echo "  SECLYZER_PASSWORD       Admin password"
+    echo ""
     exit 0
 fi
 
-echo ""
-echo -e "${BLUE}Starting installation...${NC}"
-echo ""
+# Banner
+show_banner() {
+    echo -e "${BLUE}"
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║                                                           ║"
+    echo "║           SecLyzer Installation Script                    ║"
+    echo "║     Behavioral Biometric Authentication System            ║"
+    echo "║                                                           ║"
+    echo "║                    Version 0.3.1                          ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
 
-# ===== Create Directories =====
-echo "Creating directories..."
-mkdir -p "$INSTALL_DIR"/{bin,config,scripts,collectors,common,storage,processing,training,docs}
-mkdir -p "$DATA_DIR"/{databases,models,datasets/public}
-mkdir -p "$LOG_DIR"
-mkdir -p "$CONFIG_DIR"
-chown -R "$ACTUAL_USER":"$ACTUAL_USER" "$DATA_DIR"
-chown -R "$ACTUAL_USER":"$ACTUAL_USER" "$LOG_DIR"
-echo -e "${GREEN}✓${NC} Directories created"
+# Check root
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${RED}✗ Please run as root (use sudo)${NC}"
+        exit 1
+    fi
+}
 
-# ===== Install System Dependencies =====
-echo ""
-echo "Installing system dependencies..."
-apt update -qq
-apt install -y \
-    build-essential \
-    pkg-config \
-    libx11-dev \
-    libxext-dev \
-    libxtst-dev \
-    python3 \
-    python3-pip \
-    python3-venv \
-    sqlite3 \
-    curl \
-    git
+# Get actual user (not root)
+get_actual_user() {
+    ACTUAL_USER=${SUDO_USER:-$USER}
+    ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+    echo -e "${GREEN}✓${NC} Installing for user: $ACTUAL_USER"
+}
 
-echo -e "${GREEN}✓${NC} System dependencies installed"
+# Set configuration from environment or defaults
+set_configuration() {
+    INSTALL_DIR="${SECLYZER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    DATA_DIR="${SECLYZER_DATA_DIR:-$DEFAULT_DATA_DIR}"
+    LOG_DIR="${SECLYZER_LOG_DIR:-$DEFAULT_LOG_DIR}"
+    CONFIG_DIR="${SECLYZER_CONFIG_DIR:-$DEFAULT_CONFIG_DIR}"
+    REDIS_MEMORY="${SECLYZER_REDIS_MEMORY:-$DEFAULT_REDIS_MEMORY}"
+    
+    # Auto-detect or use provided venv path
+    if [ -n "$SECLYZER_VENV_PATH" ]; then
+        VENV_PATH="$SECLYZER_VENV_PATH"
+    elif [ -d "$ACTUAL_HOME/Documents/Projects/venv" ]; then
+        VENV_PATH="$ACTUAL_HOME/Documents/Projects/venv"
+    elif [ -d "$ACTUAL_HOME/.venv" ]; then
+        VENV_PATH="$ACTUAL_HOME/.venv"
+    elif [ -d "$ACTUAL_HOME/venv" ]; then
+        VENV_PATH="$ACTUAL_HOME/venv"
+    else
+        VENV_PATH="$ACTUAL_HOME/.seclyzer-venv"
+    fi
+    
+    # Generate or use provided password
+    if [ -n "$SECLYZER_PASSWORD" ]; then
+        PASSWORD="$SECLYZER_PASSWORD"
+    else
+        PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    fi
+    PASSWORD_HASH=$(echo -n "$PASSWORD" | sha256sum | cut -d' ' -f1)
+}
 
-# ===== Install Redis =====
-if [ "$INSTALL_REDIS" = true ]; then
+# Interactive configuration
+interactive_config() {
+    echo -e "${CYAN}=== Installation Configuration ===${NC}"
+    echo ""
+    
+    read -p "Install directory [$INSTALL_DIR]: " input
+    INSTALL_DIR=${input:-$INSTALL_DIR}
+    
+    read -p "Data directory [$DATA_DIR]: " input
+    DATA_DIR=${input:-$DATA_DIR}
+    
+    read -p "Log directory [$LOG_DIR]: " input
+    LOG_DIR=${input:-$LOG_DIR}
+    
+    read -p "Config directory [$CONFIG_DIR]: " input
+    CONFIG_DIR=${input:-$CONFIG_DIR}
+    
+    read -p "Python venv path [$VENV_PATH]: " input
+    VENV_PATH=${input:-$VENV_PATH}
+    
+    read -p "Install Redis? [Y/n]: " input
+    [[ "$input" =~ ^[Nn]$ ]] && INSTALL_REDIS=false
+    
+    read -p "Install InfluxDB? [Y/n]: " input
+    [[ "$input" =~ ^[Nn]$ ]] && INSTALL_INFLUXDB=false
+    
+    read -p "Enable auto-start? [Y/n]: " input
+    [[ "$input" =~ ^[Nn]$ ]] && ENABLE_AUTOSTART=false
+    
+    echo ""
+    echo "Set admin password for SecLyzer:"
+    while true; do
+        read -s -p "Password: " PASSWORD
+        echo ""
+        read -s -p "Confirm: " PASSWORD_CONFIRM
+        echo ""
+        if [ "$PASSWORD" = "$PASSWORD_CONFIRM" ] && [ ${#PASSWORD} -ge 6 ]; then
+            PASSWORD_HASH=$(echo -n "$PASSWORD" | sha256sum | cut -d' ' -f1)
+            break
+        fi
+        echo -e "${RED}Passwords don't match or too short (min 6 chars)${NC}"
+    done
+}
+
+# Show configuration summary
+show_config() {
+    echo ""
+    echo -e "${CYAN}=== Configuration Summary ===${NC}"
+    echo "  Install Dir:    $INSTALL_DIR"
+    echo "  Data Dir:       $DATA_DIR"
+    echo "  Log Dir:        $LOG_DIR"
+    echo "  Config Dir:     $CONFIG_DIR"
+    echo "  Python Venv:    $VENV_PATH"
+    echo "  Install Redis:  $INSTALL_REDIS"
+    echo "  Install InfluxDB: $INSTALL_INFLUXDB"
+    echo "  Auto-start:     $ENABLE_AUTOSTART"
+    echo ""
+}
+
+# Create directories
+create_directories() {
+    echo "Creating directories..."
+    mkdir -p "$INSTALL_DIR"/{bin,lib,scripts}
+    mkdir -p "$DATA_DIR"/{databases,models,datasets}
+    mkdir -p "$LOG_DIR"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Set ownership
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$DATA_DIR"
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$LOG_DIR"
+    
+    # Create .gitkeep files
+    touch "$DATA_DIR/datasets/.gitkeep"
+    touch "$DATA_DIR/models/.gitkeep"
+    
+    echo -e "${GREEN}✓${NC} Directories created"
+}
+
+# Install system dependencies
+install_dependencies() {
+    echo ""
+    echo "Installing system dependencies..."
+    
+    apt-get update -qq
+    
+    DEPS="build-essential pkg-config libx11-dev libxext-dev libxtst-dev \
+          python3 python3-pip python3-venv python3-dev \
+          sqlite3 curl git bc"
+    
+    apt-get install -y $DEPS > /dev/null 2>&1
+    
+    echo -e "${GREEN}✓${NC} System dependencies installed"
+}
+
+# Install Redis
+install_redis() {
+    if [ "$INSTALL_REDIS" = false ]; then
+        echo -e "${YELLOW}⚠${NC} Skipping Redis installation"
+        return
+    fi
+    
     echo ""
     echo "Installing Redis..."
     
     if ! command -v redis-server &> /dev/null; then
-        apt install -y redis-server redis-tools
+        apt-get install -y redis-server redis-tools > /dev/null 2>&1
     fi
     
     # Configure Redis
     REDIS_CONF="/etc/redis/redis.conf"
     if [ -f "$REDIS_CONF" ]; then
-        cp "$REDIS_CONF" "${REDIS_CONF}.backup_$(date +%Y%m%d_%H%M%S)"
+        # Backup
+        cp "$REDIS_CONF" "${REDIS_CONF}.bak.$(date +%s)" 2>/dev/null || true
         
-        # Set memory limit
+        # Configure
         sed -i "s/^# maxmemory .*/maxmemory $REDIS_MEMORY/" "$REDIS_CONF"
         sed -i "s/^maxmemory .*/maxmemory $REDIS_MEMORY/" "$REDIS_CONF"
-        
-        # Set eviction policy
         sed -i "s/^# maxmemory-policy .*/maxmemory-policy allkeys-lru/" "$REDIS_CONF"
         sed -i "s/^maxmemory-policy .*/maxmemory-policy allkeys-lru/" "$REDIS_CONF"
-        
-        # Bind to localhost only
         sed -i "s/^bind .*/bind 127.0.0.1/" "$REDIS_CONF"
     fi
     
-    systemctl enable redis-server
+    systemctl enable redis-server > /dev/null 2>&1
     systemctl restart redis-server
     
     echo -e "${GREEN}✓${NC} Redis installed and configured"
-fi
+}
 
-# ===== Install Rust (if needed) =====
-echo ""
-echo "Checking Rust installation..."
-if ! command -v cargo &> /dev/null; then
-    echo "Installing Rust..."
-    sudo -u "$ACTUAL_USER" bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
-    source /home/"$ACTUAL_USER"/.cargo/env
-    echo -e "${GREEN}✓${NC} Rust installed"
-else
-    echo -e "${GREEN}✓${NC} Rust already installed"
-fi
+# Install InfluxDB
+install_influxdb() {
+    if [ "$INSTALL_INFLUXDB" = false ]; then
+        echo -e "${YELLOW}⚠${NC} Skipping InfluxDB installation"
+        return
+    fi
+    
+    echo ""
+    echo "Installing InfluxDB..."
+    
+    if ! command -v influx &> /dev/null; then
+        # Add repository
+        curl -s https://repos.influxdata.com/influxdata-archive_compat.key | \
+            gpg --dearmor > /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg 2>/dev/null
+        
+        echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main" | \
+            tee /etc/apt/sources.list.d/influxdata.list > /dev/null
+        
+        apt-get update -qq
+        apt-get install -y influxdb2 > /dev/null 2>&1
+    fi
+    
+    systemctl enable influxdb > /dev/null 2>&1
+    systemctl start influxdb
+    
+    # Wait for InfluxDB
+    for i in {1..30}; do
+        curl -s http://localhost:8086/ping > /dev/null 2>&1 && break
+        sleep 1
+    done
+    
+    # Initialize if not already done
+    if ! influx auth list &> /dev/null 2>&1; then
+        INFLUX_PASSWORD=$(openssl rand -base64 16)
+        
+        influx setup \
+            --org "seclyzer" \
+            --bucket "behavioral_data" \
+            --username "seclyzer_admin" \
+            --password "$INFLUX_PASSWORD" \
+            --retention "30d" \
+            --force > /dev/null 2>&1 || true
+        
+        # Create and save token
+        TEMP_FILE="/tmp/influx_token_$$.json"
+        influx auth create --org "seclyzer" --read-buckets --write-buckets --json > "$TEMP_FILE" 2>/dev/null || true
+        
+        if [ -f "$TEMP_FILE" ]; then
+            INFLUX_TOKEN=$(grep -o '"token": *"[^"]*"' "$TEMP_FILE" 2>/dev/null | cut -d'"' -f4)
+            rm -f "$TEMP_FILE"
+            
+            if [ -n "$INFLUX_TOKEN" ]; then
+                echo "$INFLUX_TOKEN" > "$CONFIG_DIR/influxdb_token"
+                chmod 600 "$CONFIG_DIR/influxdb_token"
+            fi
+        fi
+        
+        # Save credentials
+        echo "INFLUX_PASSWORD=$INFLUX_PASSWORD" >> "$CONFIG_DIR/.credentials"
+        chmod 600 "$CONFIG_DIR/.credentials"
+    fi
+    
+    echo -e "${GREEN}✓${NC} InfluxDB installed and configured"
+}
 
-# Set PROJECT_ROOT and SOURCE_DIR
-cd "$(dirname "$0")"
-PROJECT_ROOT="$(pwd)"
-SOURCE_DIR="$PROJECT_ROOT"
+# Install Rust
+install_rust() {
+    echo ""
+    echo "Checking Rust installation..."
+    
+    if ! sudo -u "$ACTUAL_USER" bash -c 'command -v cargo' &> /dev/null; then
+        echo "Installing Rust..."
+        sudo -u "$ACTUAL_USER" bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' > /dev/null 2>&1
+        echo -e "${GREEN}✓${NC} Rust installed"
+    else
+        echo -e "${GREEN}✓${NC} Rust already installed"
+    fi
+}
 
-# ===== Build Collectors =====
-echo ""
-echo "Building SecLyzer collectors (this may take 2-5 minutes)..."
+# Build collectors
+build_collectors() {
+    if [ "$SKIP_BUILD" = true ]; then
+        echo -e "${YELLOW}⚠${NC} Skipping collector build"
+        return
+    fi
+    
+    echo ""
+    echo "Building Rust collectors (this may take 2-5 minutes)..."
+    
+    sudo -u "$ACTUAL_USER" bash -c "
+        source '$ACTUAL_HOME/.cargo/env' 2>/dev/null || true
+        cd '$SCRIPT_DIR/collectors/keyboard_collector' && cargo build --release 2>/dev/null
+        cd '$SCRIPT_DIR/collectors/mouse_collector' && cargo build --release 2>/dev/null
+        cd '$SCRIPT_DIR/collectors/app_monitor' && cargo build --release 2>/dev/null
+    "
+    
+    # Copy binaries
+    cp "$SCRIPT_DIR/collectors/keyboard_collector/target/release/keyboard_collector" "$INSTALL_DIR/bin/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/collectors/mouse_collector/target/release/mouse_collector" "$INSTALL_DIR/bin/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/collectors/app_monitor/target/release/app_monitor" "$INSTALL_DIR/bin/" 2>/dev/null || true
+    
+    chmod +x "$INSTALL_DIR/bin/"* 2>/dev/null || true
+    
+    echo -e "${GREEN}✓${NC} Collectors built"
+}
 
-# Build as the actual user (not root)
-sudo -u "$ACTUAL_USER" bash -c "
-    source /home/$ACTUAL_USER/.cargo/env
-    cd '$PROJECT_ROOT/collectors/keyboard_collector' && cargo build --release
-    cd '$PROJECT_ROOT/collectors/mouse_collector' && cargo build --release
-    cd '$PROJECT_ROOT/collectors/app_monitor' && cargo build --release
-"
+# Setup Python environment
+setup_python() {
+    echo ""
+    echo "Setting up Python environment..."
+    
+    # Create venv if needed
+    if [ ! -d "$VENV_PATH" ]; then
+        sudo -u "$ACTUAL_USER" python3 -m venv "$VENV_PATH"
+    fi
+    
+    # Install dependencies
+    sudo -u "$ACTUAL_USER" bash -c "
+        source '$VENV_PATH/bin/activate'
+        pip install -q --upgrade pip
+        pip install -q redis polars influxdb-client scikit-learn numpy pydantic onnxruntime joblib
+    " 2>/dev/null
+    
+    echo -e "${GREEN}✓${NC} Python environment ready"
+}
 
-# Copy binaries
-cp collectors/keyboard_collector/target/release/keyboard_collector "$INSTALL_DIR/bin/"
-cp collectors/mouse_collector/target/release/mouse_collector "$INSTALL_DIR/bin/"
-cp collectors/app_monitor/target/release/app_monitor "$INSTALL_DIR/bin/"
+# Setup SQLite database
+setup_sqlite() {
+    echo ""
+    echo "Setting up SQLite database..."
+    
+    DB_FILE="$DATA_DIR/databases/seclyzer.db"
+    
+    sqlite3 "$DB_FILE" << 'EOF'
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    training_status TEXT DEFAULT 'initial',
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-# Set ownership
-chown root:root "$INSTALL_DIR/bin/keyboard_collector"
-chown root:root "$INSTALL_DIR/bin/mouse_collector"
-chmod +x "$INSTALL_DIR/bin/"*
+CREATE TABLE IF NOT EXISTS models (
+    model_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    model_type TEXT NOT NULL,
+    version TEXT,
+    trained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    accuracy REAL,
+    model_path TEXT,
+    is_active INTEGER DEFAULT 0,
+    FOREIGN KEY(user_id) REFERENCES user_profile(user_id)
+);
 
-echo -e "${GREEN}✓${NC} Collectors built and installed"
+CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-# ===== Install Python Dependencies =====
-echo ""
-echo "Installing Python dependencies..."
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    event_type TEXT NOT NULL,
+    confidence_score REAL,
+    state TEXT,
+    details TEXT
+);
 
-sudo -u "$ACTUAL_USER" bash -c "
-    source '$PYTHON_VENV_PATH/bin/activate'
-    pip install -q --upgrade pip
-    pip install -q redis polars influxdb-client scikit-learn
-"
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_models_user ON models(user_id);
 
-echo -e "${GREEN}✓${NC} Python dependencies installed"
+INSERT OR IGNORE INTO user_profile (username, training_status) VALUES ('default', 'initial');
+INSERT OR IGNORE INTO config (key, value) VALUES ('version', '0.3.1');
+INSERT OR IGNORE INTO config (key, value) VALUES ('installed_at', datetime('now'));
+EOF
+    
+    chown "$ACTUAL_USER:$ACTUAL_USER" "$DB_FILE"
+    chmod 600 "$DB_FILE"
+    
+    echo -e "${GREEN}✓${NC} SQLite database ready"
+}
 
-# ===== Copy Configuration =====
-echo ""
-echo "Setting up configuration..."
+# Copy project files
+copy_files() {
+    echo ""
+    echo "Copying project files..."
+    
+    # Copy Python modules
+    cp -r "$SCRIPT_DIR/common" "$INSTALL_DIR/lib/"
+    cp -r "$SCRIPT_DIR/storage" "$INSTALL_DIR/lib/"
+    cp -r "$SCRIPT_DIR/processing" "$INSTALL_DIR/lib/"
+    cp -r "$SCRIPT_DIR/daemon" "$INSTALL_DIR/lib/"
+    
+    # Copy scripts
+    cp "$SCRIPT_DIR/scripts/seclyzer" "$INSTALL_DIR/bin/"
+    cp "$SCRIPT_DIR/scripts/dev" "$INSTALL_DIR/bin/seclyzer-dev"
+    cp "$SCRIPT_DIR/scripts/start_collectors.sh" "$INSTALL_DIR/scripts/"
+    cp "$SCRIPT_DIR/scripts/start_extractors.sh" "$INSTALL_DIR/scripts/"
+    cp "$SCRIPT_DIR/scripts/stop_extractors.sh" "$INSTALL_DIR/scripts/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/scripts/train_models.py" "$INSTALL_DIR/scripts/"
+    
+    chmod +x "$INSTALL_DIR/bin/"*
+    chmod +x "$INSTALL_DIR/scripts/"*.sh 2>/dev/null || true
+    
+    # Copy config
+    cp "$SCRIPT_DIR/config/seclyzer.yml" "$CONFIG_DIR/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/.env.example" "$CONFIG_DIR/.env" 2>/dev/null || true
+    
+    # Update paths in config
+    if [ -f "$CONFIG_DIR/seclyzer.yml" ]; then
+        sed -i "s|data/databases|$DATA_DIR/databases|g" "$CONFIG_DIR/seclyzer.yml"
+        sed -i "s|data/models|$DATA_DIR/models|g" "$CONFIG_DIR/seclyzer.yml"
+        sed -i "s|data/logs|$LOG_DIR|g" "$CONFIG_DIR/seclyzer.yml"
+    fi
+    
+    echo -e "${GREEN}✓${NC} Files copied"
+}
 
-# Update config file with user-selected paths
-CONFIG_FILE="$CONFIG_DIR/seclyzer.yml"
-cp "$PROJECT_ROOT/config/seclyzer.yml" "$CONFIG_FILE"
-
-# Replace paths in config using sed
-sed -i "s|data/databases/seclyzer.db|$DATA_DIR/databases/seclyzer.db|g" "$CONFIG_FILE"
-sed -i "s|data/models/|$DATA_DIR/models/|g" "$CONFIG_FILE"
-sed -i "s|data/logs/seclyzer.log|$LOG_DIR/seclyzer.log|g" "$CONFIG_FILE"
-
-chown "$ACTUAL_USER":"$ACTUAL_USER" "$CONFIG_FILE"
-
-echo -e "${GREEN}✓${NC} Configuration installed"
-
-# ===== Create Systemd Services =====
-echo ""
-echo "Creating systemd services..."
-
-# Keyboard Collector Service
-cat > /etc/systemd/system/seclyzer-keyboard.service << EOF
+# Create systemd services
+create_systemd_services() {
+    echo ""
+    echo "Creating systemd services..."
+    
+    # Keyboard collector
+    cat > /etc/systemd/system/seclyzer-keyboard.service << EOF
 [Unit]
 Description=SecLyzer Keyboard Collector
 After=network.target redis-server.service
-Requires=redis-server.service
 
 [Service]
 Type=simple
@@ -345,12 +534,11 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Mouse Collector Service
-cat > /etc/systemd/system/seclyzer-mouse.service << EOF
+    # Mouse collector
+    cat > /etc/systemd/system/seclyzer-mouse.service << EOF
 [Unit]
 Description=SecLyzer Mouse Collector
 After=network.target redis-server.service
-Requires=redis-server.service
 
 [Service]
 Type=simple
@@ -364,16 +552,15 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# App Monitor Service
-cat > /etc/systemd/system/seclyzer-app.service << EOF
+    # App monitor
+    cat > /etc/systemd/system/seclyzer-app.service << EOF
 [Unit]
 Description=SecLyzer App Monitor
 After=network.target redis-server.service
-Requires=redis-server.service
 
 [Service]
 Type=simple
-User=$SUDO_USER
+User=$ACTUAL_USER
 Environment="DISPLAY=:0"
 ExecStart=$INSTALL_DIR/bin/app_monitor
 Restart=on-failure
@@ -383,259 +570,201 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-echo -e "${GREEN}✓${NC} Systemd services created"
+    # Feature extractors
+    cat > /etc/systemd/system/seclyzer-extractors.service << EOF
+[Unit]
+Description=SecLyzer Feature Extractors
+After=network.target redis-server.service seclyzer-keyboard.service
 
-# ===== Install Helper Scripts =====
-echo ""
-echo "Installing helper scripts..."
-cp scripts/seclyzer "$INSTALL_DIR/bin/"
-chmod +x "$INSTALL_DIR/bin/seclyzer"
+[Service]
+Type=forking
+User=$ACTUAL_USER
+Environment="PYTHONPATH=$INSTALL_DIR/lib"
+Environment="VENV_PATH=$VENV_PATH"
+ExecStart=/bin/bash -c 'source $VENV_PATH/bin/activate && cd $INSTALL_DIR/lib && python3 processing/extractors/keystroke_extractor.py & python3 processing/extractors/mouse_extractor.py & python3 processing/extractors/app_tracker.py &'
+Restart=on-failure
+RestartSec=10
 
-# Copy Python modules
-echo "Copying Python modules..."
-cp -r "$SOURCE_DIR/storage" "$INSTALL_DIR/"
-cp -r "$SOURCE_DIR/processing" "$INSTALL_DIR/"
-cp -r "$SOURCE_DIR/common" "$INSTALL_DIR/"
-cp -r "$SOURCE_DIR/training" "$INSTALL_DIR/"
+[Install]
+WantedBy=multi-user.target
+EOF
 
-# Copy extractor scripts
-cp scripts/start_extractors.sh "$INSTALL_DIR/bin/"
-cp scripts/stop_extractors.sh "$INSTALL_DIR/bin/"
-chmod +x "$INSTALL_DIR/bin/start_extractors.sh"
-chmod +x "$INSTALL_DIR/bin/stop_extractors.sh"
+    systemctl daemon-reload
+    
+    if [ "$ENABLE_AUTOSTART" = true ]; then
+        systemctl enable seclyzer-keyboard.service > /dev/null 2>&1
+        systemctl enable seclyzer-mouse.service > /dev/null 2>&1
+        systemctl enable seclyzer-app.service > /dev/null 2>&1
+        echo -e "${GREEN}✓${NC} Systemd services created and enabled"
+    else
+        echo -e "${GREEN}✓${NC} Systemd services created (not enabled)"
+    fi
+}
 
-echo -e "${GREEN}✓${NC} Helper scripts installed"
-
-# ===== Enable Systemd Services (if enabled) =====
-if [ "$ENABLE_AUTOSTART" = true ]; then
+# Save installation metadata
+save_metadata() {
     echo ""
-    echo "Enabling systemd services for auto-start..."
-    systemctl enable seclyzer-keyboard.service
-    systemctl enable seclyzer-mouse.service
-    systemctl enable seclyzer-app.service
-    echo -e "${GREEN}✓${NC} Systemd services enabled"
-fi
-
-# ===== Save installation metadata =====
-cat > "$INSTALL_DIR/.install_metadata" << EOF
+    echo "Saving installation metadata..."
+    
+    cat > "$INSTALL_DIR/.install_metadata" << EOF
 INSTALL_DIR=$INSTALL_DIR
 DATA_DIR=$DATA_DIR
 LOG_DIR=$LOG_DIR
 CONFIG_DIR=$CONFIG_DIR
-PYTHON_VENV_PATH=$PYTHON_VENV_PATH
-INSTALLED_USER=$ACTUAL_USER
-INSTALL_DATE=$(date)
+VENV_PATH=$VENV_PATH
+ACTUAL_USER=$ACTUAL_USER
+INSTALL_DATE=$(date -Iseconds)
+VERSION=0.3.1
 REDIS_INSTALLED=$INSTALL_REDIS
+INFLUXDB_INSTALLED=$INSTALL_INFLUXDB
 AUTOSTART_ENABLED=$ENABLE_AUTOSTART
-PASSWORD_HASH=$SECLYZER_PASSWORD_HASH
 EOF
-
-# Save password hash separately (more secure location)
-echo "$SECLYZER_PASSWORD_HASH" > "$CONFIG_DIR/.password_hash"
-chmod 600 "$CONFIG_DIR/.password_hash"
-
-# ===== Create uninstall script =====
-echo ""
-echo "Creating uninstall script..."
-
-cat > "$INSTALL_DIR/uninstall.sh" << 'UNINSTALL_SCRIPT_EOF'
-#!/bin/bash
-# SecLyzer Uninstall Script
-# Auto-generated during installation
-
-set -e
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-if [ "$EUID" -ne 0 ]; then 
-    echo -e "${RED}✗ Please run as root (use sudo)${NC}"
-    exit 1
-fi
-
-# Load installation metadata
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/.install_metadata" ]; then
-    source "$SCRIPT_DIR/.install_metadata"
-else
-    echo -e "${RED}✗ Installation metadata not found${NC}"
-    exit 1
-fi
-
-echo -e "${YELLOW}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${YELLOW}║       SecLyzer Uninstallation                     ║${NC}"
-echo -e "${YELLOW}╚═══════════════════════════════════════════════════╝${NC}"
-echo ""
-
-echo "This will remove SecLyzer from your system."
-echo ""
-echo "The following will be removed:"
-echo "  - Binaries in: $INSTALL_DIR"
-echo "  - Configuration: $CONFIG_DIR"
-echo "  - Systemd services (if enabled)"
-echo ""
-
-read -p "Remove data directory ($DATA_DIR)? This includes trained models! [y/N]: " remove_data
-read -p "Remove logs ($LOG_DIR)? [y/N]: " remove_logs
-read -p "Uninstall Redis? [y/N]: " uninstall_redis
-
-echo ""
-
-# Require password
-password_file="$CONFIG_DIR/.password_hash"
-if [ -f "$password_file" ]; then
-    stored_hash=$(cat "$password_file")
     
-    echo "Password verification required for uninstallation."
-    read -s -p "Enter SecLyzer password: " entered_password
+    # Save password hash
+    echo "$PASSWORD_HASH" > "$CONFIG_DIR/.password_hash"
+    chmod 600 "$CONFIG_DIR/.password_hash"
+    
+    echo -e "${GREEN}✓${NC} Metadata saved"
+}
+
+# Create symlinks
+create_symlinks() {
     echo ""
+    echo "Creating symlinks..."
     
-    entered_hash=$(echo -n "$entered_password" | sha256sum | cut -d' ' -f1)
+    ln -sf "$INSTALL_DIR/bin/seclyzer" /usr/local/bin/seclyzer 2>/dev/null || true
+    ln -sf "$INSTALL_DIR/bin/seclyzer-dev" /usr/local/bin/seclyzer-dev 2>/dev/null || true
     
-    if [ "$entered_hash" != "$stored_hash" ]; then
-        echo -e "${RED}✗ Incorrect password. Uninstallation cancelled.${NC}"
+    echo -e "${GREEN}✓${NC} Symlinks created"
+}
+
+# Create uninstall script
+create_uninstaller() {
+    cat > "$INSTALL_DIR/uninstall.sh" << 'UNINSTALL_EOF'
+#!/bin/bash
+set -e
+source "$(dirname "$0")/.install_metadata"
+
+echo "SecLyzer Uninstaller"
+echo ""
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
+
+# Verify password
+if [ -f "$CONFIG_DIR/.password_hash" ]; then
+    read -s -p "Enter SecLyzer password: " pwd
+    echo ""
+    hash=$(echo -n "$pwd" | sha256sum | cut -d' ' -f1)
+    stored=$(cat "$CONFIG_DIR/.password_hash")
+    if [ "$hash" != "$stored" ]; then
+        echo "Incorrect password"
         exit 1
     fi
-    echo -e "${GREEN}✓${NC} Password verified"
-    echo ""
 fi
 
-echo -e "${RED}⚠ WARNING: This action cannot be undone!${NC}"
-read -p "Proceed with uninstallation? [y/N]: " confirm
+echo "Stopping services..."
+systemctl stop seclyzer-keyboard seclyzer-mouse seclyzer-app seclyzer-extractors 2>/dev/null || true
+systemctl disable seclyzer-keyboard seclyzer-mouse seclyzer-app seclyzer-extractors 2>/dev/null || true
+rm -f /etc/systemd/system/seclyzer-*.service
+systemctl daemon-reload
 
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo "Uninstallation cancelled."
-    exit 0
-fi
-
-echo ""
-echo "Uninstalling SecLyzer..."
-echo ""
-
-# Stop and disable services
-if [ "$AUTOSTART_ENABLED" = true ]; then
-    echo "Stopping services..."
-    systemctl stop seclyzer-keyboard.service 2>/dev/null || true
-    systemctl stop seclyzer-mouse.service 2>/dev/null || true
-    systemctl stop seclyzer-app.service 2>/dev/null || true
-    
-    systemctl disable seclyzer-keyboard.service 2>/dev/null || true
-    systemctl disable seclyzer-mouse.service 2>/dev/null || true
-    systemctl disable seclyzer-app.service 2>/dev/null || true
-    
-    rm -f /etc/systemd/system/seclyzer-*.service
-    systemctl daemon-reload
-    
-    echo -e "${GREEN}✓${NC} Services stopped and removed"
-fi
-
-# Remove binaries
-echo "Removing binaries..."
+echo "Removing files..."
 rm -rf "$INSTALL_DIR"
-echo -e "${GREEN}✓${NC} Binaries removed"
-
-# Remove configuration
-echo "Removing configuration..."
 rm -rf "$CONFIG_DIR"
-echo -e "${GREEN}✓${NC} Configuration removed"
+rm -f /usr/local/bin/seclyzer /usr/local/bin/seclyzer-dev
 
-# Remove data (if confirmed)
-if [[ "$remove_data" =~ ^[Yy]$ ]]; then
-    echo "Removing data directory..."
-    rm -rf "$DATA_DIR"
-    echo -e "${GREEN}✓${NC} Data removed"
-else
-    echo -e "${YELLOW}⚠${NC} Data directory preserved: $DATA_DIR"
-fi
+read -p "Remove data ($DATA_DIR)? [y/N]: " r
+[[ "$r" =~ ^[Yy]$ ]] && rm -rf "$DATA_DIR"
 
-# Remove logs (if confirmed)
-if [[ "$remove_logs" =~ ^[Yy]$ ]]; then
-    echo "Removing logs..."
-    rm -rf "$LOG_DIR"
-    echo -e "${GREEN}✓${NC} Logs removed"
-else
-    echo -e "${YELLOW}⚠${NC} Log directory preserved: $LOG_DIR"
-fi
+read -p "Remove logs ($LOG_DIR)? [y/N]: " r
+[[ "$r" =~ ^[Yy]$ ]] && rm -rf "$LOG_DIR"
 
-# Uninstall Redis (if confirmed and was installed by SecLyzer)
-if [[ "$uninstall_redis" =~ ^[Yy]$ ]] && [ "$REDIS_INSTALLED" = true ]; then
-    echo "Uninstalling Redis..."
-    systemctl stop redis-server
-    systemctl disable redis-server
-    apt remove -y redis-server redis-tools
-    apt autoremove -y
-    echo -e "${GREEN}✓${NC} Redis uninstalled"
-else
-    echo -e "${YELLOW}⚠${NC} Redis preserved"
-fi
+echo "SecLyzer uninstalled"
+UNINSTALL_EOF
+    chmod +x "$INSTALL_DIR/uninstall.sh"
+}
 
-echo ""
-echo -e "${GREEN}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   SecLyzer has been uninstalled successfully      ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════╝${NC}"
-echo ""
-
-if [[ ! "$remove_data" =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Note: Your data is still at: $DATA_DIR${NC}"
-fi
-
-UNINSTALL_SCRIPT_EOF
-
-chmod +x "$INSTALL_DIR/uninstall.sh"
-
-echo -e "${GREEN}✓${NC} Uninstall script created at: $INSTALL_DIR/uninstall.sh"
-
-# ===== Final Summary =====
-echo ""
-echo -e "${GREEN}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  SecLyzer Installation Complete!                 ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════╝${NC}"
-echo ""
-
-echo "Installation Summary:"
-echo "  ✓ Collectors installed to: $INSTALL_DIR/bin/"
-echo "  ✓ Configuration: $CONFIG_DIR/seclyzer.yml"
-echo "  ✓ Data directory: $DATA_DIR"
-echo "  ✓ Log directory: $LOG_DIR"
-
-if [ "$INSTALL_REDIS" = true ]; then
-    echo "  ✓ Redis configured (${REDIS_MEMORY} memory limit)"
-fi
-
-if [ "$ENABLE_AUTOSTART" = true ]; then
-    echo "  ✓ Systemd services enabled"
-fi
-
-echo ""
-echo "Next Steps:"
-echo ""
-echo "1. Test the installation:"
-echo "   See: $(pwd)/docs/PHASE1_TESTING.md"
-echo ""
-
-if [ "$ENABLE_AUTOSTART" = true ]; then
-    echo "2. Start services:"
-    echo "   sudo systemctl start seclyzer-keyboard"
-    echo "   sudo systemctl start seclyzer-mouse"
-    echo "   sudo systemctl start seclyzer-app"
+# Show completion message
+show_completion() {
     echo ""
-    echo "3. Check status:"
-    echo "   sudo systemctl status seclyzer-*"
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║       SecLyzer Installation Complete!                     ║${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-else
-    echo "2. Manually run collectors:"
-    echo "   sudo $INSTALL_DIR/bin/keyboard_collector"
-    echo "   sudo $INSTALL_DIR/bin/mouse_collector"
-    echo "   $INSTALL_DIR/bin/app_monitor"
+    echo "Installation Summary:"
+    echo "  ✓ Install Dir:  $INSTALL_DIR"
+    echo "  ✓ Data Dir:     $DATA_DIR"
+    echo "  ✓ Config Dir:   $CONFIG_DIR"
+    echo "  ✓ Log Dir:      $LOG_DIR"
     echo ""
-fi
+    
+    if [ -z "$SECLYZER_PASSWORD" ]; then
+        echo -e "${YELLOW}Generated Admin Password: $PASSWORD${NC}"
+        echo -e "${YELLOW}(Save this password - you'll need it to manage SecLyzer)${NC}"
+        echo ""
+    fi
+    
+    echo "Quick Start:"
+    echo "  1. Start services:    sudo systemctl start seclyzer-keyboard seclyzer-mouse seclyzer-app"
+    echo "  2. Check status:      seclyzer status"
+    echo "  3. View logs:         seclyzer logs"
+    echo ""
+    echo "Or use the control script:"
+    echo "  seclyzer start        # Start all collectors"
+    echo "  seclyzer extractors   # Start feature extractors"
+    echo "  seclyzer status       # Check status"
+    echo ""
+    echo "For development:"
+    echo "  seclyzer-dev help     # Show all developer commands"
+    echo ""
+    echo "To uninstall:"
+    echo "  sudo $INSTALL_DIR/uninstall.sh"
+    echo ""
+}
 
-echo "To uninstall:"
-echo "  sudo $INSTALL_DIR/uninstall.sh"
-echo ""
+# ============================================================================
+# Main Installation Flow
+# ============================================================================
 
-echo -e "${YELLOW}⚠ IMPORTANT: Keyboard and mouse collectors require root permissions!${NC}"
-echo ""
+main() {
+    show_banner
+    check_root
+    get_actual_user
+    set_configuration
+    
+    if [ "$AUTO_MODE" = false ]; then
+        interactive_config
+    fi
+    
+    show_config
+    
+    if [ "$AUTO_MODE" = false ]; then
+        read -p "Proceed with installation? [Y/n]: " confirm
+        [[ "$confirm" =~ ^[Nn]$ ]] && exit 0
+    fi
+    
+    echo ""
+    echo -e "${BLUE}Starting installation...${NC}"
+    
+    create_directories
+    install_dependencies
+    install_redis
+    install_influxdb
+    install_rust
+    build_collectors
+    setup_python
+    setup_sqlite
+    copy_files
+    create_systemd_services
+    save_metadata
+    create_symlinks
+    create_uninstaller
+    
+    show_completion
+}
+
+# Run main
+main

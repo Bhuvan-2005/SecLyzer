@@ -371,46 +371,78 @@ def fuse_scores(keystroke_score, mouse_score, app_score, linguistic_score):
 
 ### Module 9: Decision Engine
 
-**STATUS:** Not implemented in this snapshot. Planned for future phase.
+**STATUS:** ✅ IMPLEMENTED (`processing/decision/decision_engine.py`)
 
-**Planned State Machine**:
+**State Machine**:
 
 ```mermaid
 stateDiagram-v2
     [*] --> Normal
-    Normal --> Monitoring: Score < 90%
-    Monitoring --> Normal: Score >= 90%
-    Monitoring --> Restricted: Score < 70%
-    Restricted --> Monitoring: Score >= 70%
-    Restricted --> Lockdown: Score < 50%
-    Lockdown --> [*]: User re-authenticates
+    Normal --> Monitoring: Score < 70%
+    Monitoring --> Normal: Score >= 70%
+    Monitoring --> Restricted: Score < 50%
+    Restricted --> Monitoring: Score >= 50%
+    Restricted --> Lockdown: Score < 35%
+    Lockdown --> Normal: Score >= 70% (immediate recovery)
 ```
 
-**Planned Actions per State**:
-- **Normal**: No action, silent monitoring
-- **Monitoring**: Log event, show unobtrusive notification
-- **Restricted**: Block sensitive apps (banking, password managers)
-- **Lockdown**: Lock screen, require password + 2FA
+**States and Thresholds**:
+- **Normal** (≥70%): Full access, silent monitoring
+- **Monitoring** (≥50%): Log events, enhanced monitoring
+- **Restricted** (≥35%): Limited access, low confidence
+- **Lockdown** (<35%): Very low confidence
 
-**Planned Code**:
+**Key Features**:
+- Confirmation logic: Requires 3 consecutive low scores before degrading
+- Immediate recovery: High scores restore normal state instantly
+- Publishes state changes to Redis `seclyzer:state_change`
+- Does NOT execute system actions (delegated to Locking Engine)
+
+---
+
+### Module 10: Locking Engine (NEW)
+
+**STATUS:** ✅ IMPLEMENTED (`processing/actions/locking_engine.py`)
+
+**Purpose**: Execute system actions based on authentication state. Decoupled from Decision Engine for independent operation.
+
+**Features**:
+- Screen locking (configurable per state)
+- Desktop notifications
+- Can be enabled/disabled without affecting Decision Engine
+- Listens to `seclyzer:state_change` Redis channel
+
+**Configuration**:
 ```python
-# PLANNED - Not yet implemented
-class DecisionEngine:
-    def __init__(self):
-        self.state = "Normal"
-        self.score_history = []
-    
-    def process_score(self, score):
-        self.score_history.append(score)
-        
-        if score < 50:
-            self.transition_to_lockdown()
-        elif score < 70:
-            self.transition_to_restricted()
-        elif score < 90:
-            self.transition_to_monitoring()
-        else:
-            self.transition_to_normal()
+LockingEngine(
+    enable_lock=True,           # Enable screen locking
+    enable_notifications=True,  # Enable desktop notifications
+    lock_on_restricted=False,   # Lock on RESTRICTED state
+    lock_on_lockdown=True,      # Lock on LOCKDOWN state
+)
+```
+
+**Architecture**:
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Inference Engine│───▶│ Decision Engine │───▶│ Locking Engine  │
+│                 │    │                 │    │   (Optional)    │
+│ • Model Scoring │    │ • State Machine │    │ • Screen Lock   │
+│ • Score Fusion  │    │ • Score History │    │ • Notifications │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+    Redis Pub/Sub          Redis Pub/Sub          System Actions
+  scores:fused           state_change            (can be disabled)
+```
+
+**Usage**:
+```bash
+# Full protection (with locking)
+seclyzer auth
+
+# Scores only (for debugging)
+seclyzer auth --no-locking
 ```
 
 ---

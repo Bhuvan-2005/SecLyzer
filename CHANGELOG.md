@@ -2,6 +2,119 @@
 
 All notable changes to SecLyzer will be documented in this file.
 
+## [0.3.1] - 2025-12-02 - Decoupled Engine Architecture
+
+### Added
+- **Locking Engine** (`processing/actions/locking_engine.py`) - NEW
+  - Separate module for system actions (screen lock, notifications)
+  - Can be enabled/disabled independently of Decision Engine
+  - Configurable: `lock_on_restricted`, `lock_on_lockdown`
+  - Listens to `seclyzer:state_change` Redis channel
+  - 24 new tests in `tests/actions/test_locking_engine.py`
+
+- **New Control Commands**:
+  - `seclyzer auth --no-locking` - Start without locking (scores only mode)
+  - `./scripts/dev auth-start-no-lock` - Developer command for scores-only mode
+  - `./scripts/dev debug-decisions` - Monitor decision state changes
+
+- **Daemon Improvements**:
+  - `--no-locking` flag to disable locking engine
+  - `enable_locking_engine()` / `disable_locking_engine()` methods
+  - Three separate threads: Inference, Decision, Locking
+
+### Changed
+- **Decision Engine** (`processing/decision/decision_engine.py`)
+  - Removed all locking/notification code (moved to Locking Engine)
+  - Now only calculates scores and determines authentication state
+  - Publishes state changes to Redis for Locking Engine to consume
+  - Cleaner separation of concerns
+
+- **Architecture**:
+  ```
+  Inference Engine → Decision Engine → Locking Engine (optional)
+       ↓                   ↓                  ↓
+  scores:fused      state_change       System Actions
+  ```
+
+### Fixed
+- Decision scores can now be monitored without triggering screen locks
+- Debugging authentication is now possible without system interference
+
+### Tests
+- Total tests: 178 (up from 154)
+- New locking engine tests: 24
+- Updated decision engine tests: 28 (removed lock-related tests)
+
+## [MODEL TRAINING BUGFIX] - 2025-12-02
+
+### Fixed
+- **Flux Query Syntax Error**:
+  - Fixed timestamp formatting in InfluxDB Flux queries
+  - Changed `.isoformat()}Z` to `.isoformat()}` in all training scripts
+  - InfluxDB automatically handles timezone-aware datetime objects
+  - Affected files:
+    - `scripts/train_models.py`
+    - `processing/models/train_keystroke.py`
+    - `processing/models/train_mouse.py`
+    - `processing/models/train_app_usage.py`
+  - Error was: "undefined identifier Z" causing 400 Bad Request
+  - Now properly queries data from InfluxDB for training
+
+## [MODEL TRAINING IMPLEMENTATION] - 2025-12-02
+
+### Added
+- **Complete Model Training Pipeline**:
+  - `processing/models/train_keystroke.py` - Random Forest classifier for keystroke dynamics
+    - 140 feature dimensions (dwell time, flight time, digraphs, rhythm, errors)
+    - Optimized for laptop performance (50 trees, max depth 15)
+    - Generates synthetic negative samples for training
+    - Exports to both PKL and ONNX formats
+  - `processing/models/train_mouse.py` - One-Class SVM for mouse behavior anomaly detection
+    - 38 feature dimensions (velocity, acceleration, jerk, clicks, scrolling)
+    - RBF kernel with automatic scaling
+    - Laptop-friendly cache size (500MB)
+    - Includes StandardScaler in pipeline
+  - `processing/models/train_app_usage.py` - Markov Chain for app usage patterns
+    - Transition probability matrix
+    - Time-of-day usage patterns
+    - Duration statistics and app rankings
+    - Entropy-based predictability scoring
+    - Output in JSON format
+  - `scripts/train_models.py` - Training orchestrator script
+    - Check data availability before training
+    - Train all models or specific models
+    - Configurable time windows and requirements
+    - Force mode for training with insufficient data
+    - Comprehensive progress reporting
+
+- **Comprehensive Test Suite** (49 tests):
+  - `tests/models/test_train_keystroke.py` - 12 tests for keystroke model
+  - `tests/models/test_train_mouse.py` - 17 tests for mouse model
+  - `tests/models/test_train_app_usage.py` - 20 tests for app usage model
+  - All tests passing with mocked database connections
+
+### Improved
+- **Training Requirements**:
+  - Keystroke: 500 min / 1000 recommended samples
+  - Mouse: 800 min / 1500 recommended samples
+  - App: 50 min / 100 recommended transitions
+- **Performance Optimizations**:
+  - Efficient data handling with Polars
+  - Parallel processing (n_jobs=-1)
+  - Reduced model complexity for laptop performance
+  - No GPU required
+- **Model Output**:
+  - Automatic versioning with timestamps
+  - Metadata saved to SQLite database
+  - ONNX export for cross-platform inference
+  - Feature names preserved for interpretability
+
+### Documentation
+- Updated README.md with training instructions
+- Added training workflow and requirements
+- Documented model architectures and features
+- Added performance optimization details
+
 ## [PYTHON 3.12+ COMPATIBILITY & CODE CLEANUP] - 2025-12-01 12:39 IST
 
 ### Fixed

@@ -9,6 +9,7 @@ Only use in development environments.
 
 import hashlib
 import os
+import subprocess
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -200,7 +201,7 @@ class DeveloperMode:
                 ],
                 check=False,
             )
-        except:
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
             # Fallback to console
             print(f"\n{'='*60}")
             print(f"  {message}")

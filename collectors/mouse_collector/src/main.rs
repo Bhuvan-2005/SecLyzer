@@ -1,4 +1,4 @@
-use rdev::{listen, Event, EventType, Button};
+use rdev::{listen, EventType};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -68,7 +68,7 @@ fn main() {
                     scroll_delta: None,
                 })
             }
-            EventType::Wheel { delta_x, delta_y } => {
+            EventType::Wheel { delta_x: _, delta_y } => {
                 Some(MouseEvent {
                     event_type: "mouse".to_string(),
                     ts: timestamp,

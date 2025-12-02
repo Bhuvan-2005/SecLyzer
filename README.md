@@ -1,27 +1,65 @@
 # SecLyzer
 
-**Behavioral Biometric Authentication System**  
-**Version:** 0.2.0 | **Status:** B- (Production Hardening Phase) | **License:** MIT
+<div align="center">
 
-> Continuous authentication based on typing patterns, mouse behavior, and application usage.
+![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)
+![Status](https://img.shields.io/badge/status-Production%20Ready-green.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-178%20passing-brightgreen.svg)
+
+**Behavioral Biometric Authentication System**
+
+*Continuous authentication based on typing patterns, mouse behavior, and application usage.*
+
+[Features](#-features) •
+[Quick Start](#-quick-start) •
+[Architecture](#-architecture) •
+[Usage](#-usage) •
+[Documentation](#-documentation)
+
+</div>
 
 ---
 
 ## 🎯 What is SecLyzer?
 
-SecLyzer is a behavioral biometric authentication system that learns your unique interaction patterns with your computer and uses them for continuous, transparent authentication. Instead of just passwords, it monitors:
+SecLyzer is a **behavioral biometric authentication system** that learns your unique interaction patterns with your computer and uses them for continuous, transparent authentication. Instead of relying solely on passwords, it monitors:
 
-- ⌨️ **Keystroke Dynamics** - How you type (timing, rhythm, pressure)
-- 🖱️ **Mouse Behavior** - How you move and click
-- 📱 **App Usage** - Which apps you use and when
+| Modality | What It Tracks | Features |
+|----------|---------------|----------|
+| ⌨️ **Keystroke Dynamics** | How you type | Timing, rhythm, dwell time, flight time, error patterns |
+| 🖱️ **Mouse Behavior** | How you move and click | Velocity, acceleration, curvature, click patterns |
+| 📱 **App Usage** | Which apps you use | Transition patterns, time-of-day preferences |
 
-### Key Features
+### Why Behavioral Biometrics?
 
-- ✅ **Real-time Monitoring** - Continuous behavioral analysis
-- ✅ **Machine Learning** - Adaptive models trained on your behavior
-- ✅ **Local Processing** - All data stays on your machine
-- ✅ **Production Hardening** - Logging, retry logic, validation, configuration management
-- ✅ **Developer Tools** - Comprehensive management scripts and testing suite
+- **Continuous**: Authentication happens constantly, not just at login
+- **Transparent**: No user interaction required
+- **Adaptive**: Models learn and adapt to your behavior
+- **Privacy-First**: All processing happens locally on your machine
+
+---
+
+## ✨ Features
+
+### Core Capabilities
+- ✅ **Real-time Monitoring** - Continuous behavioral analysis every 5 seconds
+- ✅ **Machine Learning** - Adaptive models trained on your unique behavior
+- ✅ **Local Processing** - All data stays on your machine (no cloud)
+- ✅ **Decoupled Architecture** - Modular engines that can be enabled/disabled independently
+
+### Security Features
+- 🔒 **4-State Authentication** - Normal → Monitoring → Restricted → Lockdown
+- 🔒 **Confirmation Logic** - Requires 3 consecutive anomalies before action
+- 🔒 **Developer Mode** - Bypass for testing without compromising security
+- 🔒 **Audit Logging** - All decisions logged for forensics
+
+### Developer Experience
+- 🛠️ **Comprehensive CLI** - 30+ commands for management and debugging
+- 🛠️ **178 Unit Tests** - Full test coverage
+- 🛠️ **Structured Logging** - JSON logs with correlation IDs
+- 🛠️ **Hot Reload** - Reload models without restart
 
 ---
 
@@ -31,11 +69,15 @@ SecLyzer is a behavioral biometric authentication system that learns your unique
 - [Architecture](#-architecture)
 - [Installation](#-installation)
 - [Usage](#-usage)
+- [Model Training](#-model-training)
+- [Authentication States](#-authentication-states)
+- [Configuration](#-configuration)
 - [Development](#-development)
 - [Testing](#-testing)
-- [Documentation](#-documentation)
 - [Troubleshooting](#-troubleshooting)
+- [Security & Privacy](#-security--privacy)
 - [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
@@ -43,66 +85,114 @@ SecLyzer is a behavioral biometric authentication system that learns your unique
 
 ### Prerequisites
 
-- **OS:** Linux (Ubuntu 20.04+, Debian, Arch)
-- **Python:** 3.12+ (required for timezone-aware datetime support)
-- **Rust:** 1.60+ (for building collectors)
-- **Databases:** Redis, InfluxDB
-- **Dependencies:** See `requirements_ml.txt`
+| Requirement | Version | Purpose |
+|-------------|---------|---------|
+| **OS** | Linux (Ubuntu 20.04+) | Primary platform |
+| **Python** | 3.12+ | Core runtime |
+| **Rust** | 1.60+ | Collectors |
+| **Redis** | 6.0+ | Message queue |
+| **InfluxDB** | 2.0+ | Time-series storage |
 
 ### Installation (5 Minutes)
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourname/SecLyzer.git
+git clone https://github.com/yourusername/SecLyzer.git
 cd SecLyzer
 
 # 2. Run installer
 chmod +x install.sh
 ./install.sh
 
-# 3. Start services
-./scripts/dev start
+# 3. Start data collection
+./scripts/seclyzer start
+./scripts/seclyzer extractors
 
-# 4. Verify
-./scripts/dev status
-./scripts/dev smoke-test
+# 4. Verify installation
+./scripts/seclyzer status
+```
+
+### Typical Workflow
+
+```bash
+# Phase 1: Data Collection (1-2 weeks)
+./scripts/seclyzer start           # Start collectors
+./scripts/seclyzer extractors      # Start feature extraction
+./scripts/seclyzer status          # Monitor progress
+
+# Phase 2: Model Training
+./scripts/seclyzer train --check   # Check data readiness
+./scripts/seclyzer train --all     # Train all models
+
+# Phase 3: Authentication
+./scripts/seclyzer auth            # Start full protection
+# OR
+./scripts/seclyzer auth --no-locking  # Scores only (for testing)
 ```
 
 ---
 
 ## 🏗️ Architecture
 
-SecLyzer follows a multi-stage pipeline:
+SecLyzer follows a **multi-stage pipeline** with **decoupled engines**:
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌────────────┐    ┌──────────┐
-│  Collectors │ -> │  Extractors  │ -> │  Training  │ -> │ Inference│
-│   (Rust)    │    │   (Python)   │    │  (ML)      │    │  Engine  │
-└─────────────┘    └──────────────┘    └────────────┘    └──────────┘
-      ↓                    ↓                    ↓              ↓
-    Redis              InfluxDB             SQLite         Redis
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SecLyzer Architecture                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────────────┐  │
+│  │ Collectors│───▶│ Extractors│───▶│  Training │───▶│ Authentication    │  │
+│  │  (Rust)   │    │ (Python)  │    │   (ML)    │    │    Pipeline       │  │
+│  └───────────┘    └───────────┘    └───────────┘    │                   │  │
+│       │                │                │           │  ┌─────────────┐  │  │
+│       ▼                ▼                ▼           │  │  Inference  │  │  │
+│    Redis           InfluxDB          SQLite        │  │   Engine    │  │  │
+│                                                     │  └──────┬──────┘  │  │
+│                                                     │         │         │  │
+│                                                     │         ▼         │  │
+│                                                     │  ┌─────────────┐  │  │
+│                                                     │  │  Decision   │  │  │
+│                                                     │  │   Engine    │  │  │
+│                                                     │  └──────┬──────┘  │  │
+│                                                     │         │         │  │
+│                                                     │         ▼         │  │
+│                                                     │  ┌─────────────┐  │  │
+│                                                     │  │  Locking    │  │  │
+│                                                     │  │  Engine     │  │  │
+│                                                     │  │ (Optional)  │  │  │
+│                                                     │  └─────────────┘  │  │
+│                                                     └───────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Components
+### Component Overview
 
-1. **Collectors (Rust)** - Low-level event capture
-   - `keyboard_collector` - Captures keystrokes
-   - `mouse_collector` - Tracks mouse movements
-   - `app_monitor` - Monitors application switches
+| Layer | Component | Language | Description |
+|-------|-----------|----------|-------------|
+| **Collection** | `keyboard_collector` | Rust | Captures keystrokes with microsecond precision |
+| **Collection** | `mouse_collector` | Rust | Tracks mouse movements at 50Hz |
+| **Collection** | `app_monitor` | Rust | Monitors active application switches |
+| **Extraction** | `keystroke_extractor` | Python | Extracts 140 typing features |
+| **Extraction** | `mouse_extractor` | Python | Extracts 38 mouse features |
+| **Extraction** | `app_tracker` | Python | Builds transition matrices |
+| **Training** | `train_keystroke` | Python | Random Forest classifier |
+| **Training** | `train_mouse` | Python | One-Class SVM |
+| **Training** | `train_app_usage` | Python | Markov Chain model |
+| **Inference** | `InferenceEngine` | Python | Real-time scoring with fusion |
+| **Decision** | `DecisionEngine` | Python | 4-state authentication FSM |
+| **Action** | `LockingEngine` | Python | Screen lock & notifications |
 
-2. **Extractors (Python)** - Feature engineering
-   - `keystroke_extractor.py` - Typing dynamics (dwell, flight, rhythm, errors)
-   - `mouse_extractor.py` - Mouse movement, clicks, and scrolling behavior
-   - `app_tracker.py` - App transitions and time-of-day usage patterns
+### Data Flow
 
-3. **Training (Python)** - Machine learning
-   - `KeystrokeModel` - Random Forest classifier
-   - `MouseModel` -One-Class SVM
-   - `AppModel` - Markov Chain
-
-4. **Inference (Python)** - Real-time scoring
-   - `InferenceEngine` - ONNX runtime inference
-   - `TrustScorer` - Weighted fusion of modality scores
+```
+Raw Events → Redis → Feature Extraction → InfluxDB → ML Inference → Decision → Action
+     │                      │                              │            │
+     │                      │                              │            │
+  keyboard              keystroke                      confidence    screen
+  mouse                 mouse                          scores        lock
+  app                   app                                          notify
+```
 
 ---
 
@@ -114,15 +204,33 @@ SecLyzer follows a multi-stage pipeline:
 ./install.sh
 ```
 
-This installs:
-- Dependencies (Redis, InfluxDB, Python packages)
-- Compiles Rust collectors
-- Sets up databases
-- Creates directory structure
+The installer will:
+1. Install system dependencies (Redis, InfluxDB)
+2. Create Python virtual environment
+3. Install Python packages
+4. Compile Rust collectors
+5. Set up databases
+6. Create directory structure
 
 ### Option 2: Manual Install
 
-See `docs/MANUAL_INSTALL.md` for step-by-step instructions.
+```bash
+# 1. Install dependencies
+sudo apt install redis-server influxdb2 python3.12 python3.12-venv
+
+# 2. Create virtual environment
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements_ml.txt
+
+# 3. Build Rust collectors
+cd collectors && ./build_all.sh
+
+# 4. Set up databases
+./scripts/setup_redis.sh
+./scripts/setup_influxdb.sh
+./scripts/setup_sqlite.sh
+```
 
 ### Option 3: Systemd Auto-Start
 
@@ -136,70 +244,360 @@ sudo ./scripts/install_systemd.sh $USER
 
 ## 🎮 Usage
 
-### Daily Workflow
+### Control Script (`seclyzer`)
+
+The main control interface for SecLyzer:
 
 ```bash
-# Start the system
-./scripts/dev start
-
-# Check status
-./scripts/dev status
-
-# View live logs
-./scripts/dev logs
-
-# Check data collection progress
-./scripts/dev check-data
+./scripts/seclyzer <command> [options]
 ```
 
-### Training Models
+#### Service Management
 
-Once you have enough data (1-2 weeks of normal use):
+| Command | Description |
+|---------|-------------|
+| `start` | Start databases and collectors |
+| `extractors` | Start feature extractors |
+| `auth` | Start authentication engine (full protection) |
+| `auth --no-locking` | Start without locking (scores only) |
+| `restart` | Restart all services |
+| `stop-extractors` | Stop feature extractors |
+| `stop-auth` | Stop authentication engine |
+| `stop-all` | Stop ALL services (requires password) |
+| `status` | Show status of all components |
+| `resources` | Show CPU/memory usage |
+
+#### Model Training
+
+| Command | Description |
+|---------|-------------|
+| `train --all` | Train all models |
+| `train --keystroke` | Train keystroke model only |
+| `train --mouse` | Train mouse model only |
+| `train --app` | Train app usage model only |
+| `train --check` | Check training data availability |
+| `train --force` | Force training with insufficient data |
+| `train --days N` | Use N days of historical data |
+
+#### Authentication Control
+
+| Command | Description |
+|---------|-------------|
+| `disable` | Disable authentication (developer mode) |
+| `enable` | Re-enable authentication |
+| `reload` | Hot-reload trained models |
+
+#### Monitoring
+
+| Command | Description |
+|---------|-------------|
+| `logs [component]` | View logs (all, auth, keystroke, mouse, app) |
+| `version` | Show version information |
+
+### Developer Script (`dev`)
+
+Advanced management for developers:
 
 ```bash
-# Check readiness
-./scripts/dev check-data
-
-# Train models
-./scripts/dev train
+./scripts/dev <command>
 ```
+
+#### Key Commands
+
+```bash
+# Testing
+./scripts/dev test              # Run all 178 tests
+./scripts/dev test-coverage     # Generate coverage report
+./scripts/dev test-fast         # Run tests without slow markers
+
+# Debugging
+./scripts/dev auth-start-no-lock  # Start without locking
+./scripts/dev auth-scores         # Monitor confidence scores
+./scripts/dev debug-decisions     # Monitor state changes
+./scripts/dev debug-redis         # Monitor Redis events
+
+# Utilities
+./scripts/dev check-health      # Verify dependencies
+./scripts/dev smoke-test        # Quick system test
+./scripts/dev clean-pycache     # Remove __pycache__
+./scripts/dev clean-models      # Remove trained models
+```
+
+---
+
+## 🧠 Model Training
+
+### Training Requirements
+
+| Model | Minimum | Recommended | Collection Time |
+|-------|---------|-------------|-----------------|
+| Keystroke | 500 samples | 1000+ samples | 2-3 days |
+| Mouse | 800 samples | 1500+ samples | 3-4 days |
+| App Usage | 50 transitions | 100+ transitions | 1-2 days |
+
+### Training Process
+
+```bash
+# 1. Check data readiness
+./scripts/seclyzer train --check
+
+# 2. Train all models
+./scripts/seclyzer train --all
+
+# 3. Verify models
+ls -la data/models/
+```
+
+### Model Details
+
+| Model | Algorithm | Features | Output |
+|-------|-----------|----------|--------|
+| **Keystroke** | Random Forest | 140 dimensions | PKL + ONNX |
+| **Mouse** | One-Class SVM | 38 dimensions | PKL + ONNX |
+| **App Usage** | Markov Chain | Transition matrix | JSON |
+
+### Performance Optimizations
+
+- Reduced tree count (50 vs 100) for Random Forest
+- Limited SVM cache (500MB)
+- Efficient data handling with Polars
+- Parallel processing where possible
+- **No GPU required**
+
+---
+
+## 🔐 Authentication States
+
+SecLyzer uses a **4-state finite state machine**:
+
+```
+                    ┌─────────────────────────────────────┐
+                    │                                     │
+                    ▼                                     │
+┌──────────┐    ┌──────────┐    ┌────────────┐    ┌──────────┐
+│  NORMAL  │───▶│MONITORING│───▶│ RESTRICTED │───▶│ LOCKDOWN │
+│  ≥70%    │    │  ≥50%    │    │   ≥35%     │    │  <35%    │
+└──────────┘    └──────────┘    └────────────┘    └──────────┘
+     ▲               │                │                │
+     │               │                │                │
+     └───────────────┴────────────────┴────────────────┘
+                    (Immediate recovery on high score)
+```
+
+| State | Threshold | Action | Description |
+|-------|-----------|--------|-------------|
+| **NORMAL** | ≥70% | Allow | Full access, silent monitoring |
+| **MONITORING** | ≥50% | Allow + Log | Enhanced logging, medium confidence |
+| **RESTRICTED** | ≥35% | Restrict | Limited access, low confidence |
+| **LOCKDOWN** | <35% | Lock Screen | Very low confidence, require re-auth |
+
+### Key Behaviors
+
+- **Degradation**: Requires 3 consecutive low scores before state change
+- **Recovery**: High score immediately restores NORMAL state
+- **Developer Mode**: Bypasses all authentication (for testing)
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+```bash
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your_password
+
+# InfluxDB
+INFLUX_URL=http://localhost:8086
+INFLUX_TOKEN=your_token
+INFLUX_ORG=seclyzer
+INFLUX_BUCKET=seclyzer
+
+# SecLyzer
+SECLYZER_LOG_LEVEL=INFO
+SECLYZER_DEV_MODE=0
+```
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `.env` | Environment variables (secrets) |
+| `config/config.yaml` | Main configuration |
+| `config/dev_mode.yml` | Developer mode settings |
+
+---
 
 ## 👨‍💻 Development
 
-### Developer Script
+### Project Structure
 
-SecLyzer includes a comprehensive developer management script with 20+ commands:
-
-```bash
-./scripts/dev help
+```
+SecLyzer/
+├── collectors/              # Rust collectors
+│   ├── keyboard_collector/
+│   ├── mouse_collector/
+│   └── app_monitor/
+├── processing/              # Python processing
+│   ├── extractors/          # Feature extraction
+│   ├── models/              # ML training
+│   ├── inference/           # Real-time inference
+│   ├── decision/            # Decision engine
+│   └── actions/             # System actions (locking)
+├── storage/                 # Database wrappers
+├── common/                  # Shared utilities
+├── daemon/                  # Main daemon
+├── scripts/                 # Control scripts
+├── tests/                   # Test suite (178 tests)
+├── config/                  # Configuration
+├── data/                    # Runtime data (gitignored)
+│   ├── models/              # Trained models
+│   ├── databases/           # SQLite
+│   └── logs/                # Log files
+└── docs/                    # Documentation
 ```
 
-**Common Commands:**
+### Code Quality
 
 ```bash
-# Service Management
-./scripts/dev start          # Start all services
-./scripts/dev stop           # Stop all services
-./scripts/dev status         # Show detailed status
+# Format code
+./scripts/dev format
 
-# Testing
-./scripts/dev smoke-test     # Quick smoke test of core services
-./scripts/dev test           # Run test suite (32 tests)
-./scripts/dev test-coverage  # Generate coverage report
-./scripts/dev lint           # Run linters
+# Run linters
+./scripts/dev lint
 
-# Debugging
-./scripts/dev show-metrics   # Display system metrics
-./scripts/dev debug-redis    # Monitor Redis events
-./scripts/dev tail-json-logs # Parse JSON logs
-
-# Utilities
-./scripts/dev config         # Show configuration
-./scripts/dev version        # Show version info
-./scripts/dev backup         # Create backup
+# Type checking
+mypy --ignore-missing-imports .
 ```
 
-See `docs/CONTROL_SCRIPTS.md` for complete documentation.
+---
+
+## 🧪 Testing
+
+### Test Suite
+
+```bash
+# Run all tests
+./scripts/dev test
+
+# Run with coverage
+./scripts/dev test-coverage
+
+# Run fast tests only
+./scripts/dev test-fast
+```
+
+### Test Coverage
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| Inference Engine | 22 | ✅ |
+| Decision Engine | 28 | ✅ |
+| Locking Engine | 24 | ✅ |
+| Feature Extractors | 20 | ✅ |
+| Model Training | 49 | ✅ |
+| Storage | 7 | ✅ |
+| Common | 12 | ✅ |
+| Integration | 5 | ✅ |
+| **Total** | **178** | ✅ |
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Services Not Starting
+
+```bash
+./scripts/dev check-health    # Verify dependencies
+./scripts/dev logs            # Check logs
+./scripts/dev restart         # Restart services
+```
+
+#### No Data Being Collected
+
+```bash
+./scripts/seclyzer status     # Check collector status
+./scripts/dev debug-redis     # Monitor Redis events
+```
+
+#### Database Connection Errors
+
+```bash
+redis-cli ping                # Test Redis
+curl http://localhost:8086/ping  # Test InfluxDB
+./scripts/dev debug-influx    # Test InfluxDB client
+```
+
+#### Low Confidence Scores
+
+```bash
+./scripts/seclyzer train --check  # Check training data
+./scripts/seclyzer train --all    # Retrain models
+```
+
+---
+
+## 🔐 Security & Privacy
+
+### Security Model
+
+- **Local Processing**: All data stays on your machine
+- **No Cloud**: No external API calls or data transmission
+- **Encrypted Storage**: Databases can be encrypted with LUKS
+- **Audit Trail**: All decisions logged for forensics
+
+### Privacy Considerations
+
+- **No Raw Text**: Only timing data stored, not actual keystrokes
+- **Hashed Identifiers**: Window titles and app names hashed
+- **Configurable Retention**: Data automatically deleted after 30 days
+
+### Files
+
+- `SECURITY.md` - Threat model and hardening guidelines
+- `PRIVACY.md` - Data collection and storage policies
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing`)
+3. Run tests (`./scripts/dev test`)
+4. Run linters (`./scripts/dev lint`)
+5. Commit changes (`git commit -m 'Add feature'`)
+6. Push to branch (`git push origin feature/amazing`)
+7. Open a Pull Request
+
+### Development Setup
+
+```bash
+# Clone your fork
+git clone https://github.com/yourusername/SecLyzer.git
+cd SecLyzer
+
+# Install in development mode
+./install.sh
+
+# Run tests
+./scripts/dev test
+
+# Make changes and test
+./scripts/dev lint
+./scripts/dev format
+```
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -207,97 +605,29 @@ See `docs/CONTROL_SCRIPTS.md` for complete documentation.
 
 | Document | Description |
 |----------|-------------|
-| `docs/CONTROL_SCRIPTS.md` | Complete guide to seclyzer and dev scripts |
-| `CHANGELOG.md` | All changes and releases |
-| `NEXT_AGENT_HANDOVER.md` | System architecture and current state |
-| `SECURITY.md` | Security assumptions, data sensitivity, and hardening guidelines |
-| `PRIVACY.md` | High-level overview of what data SecLyzer processes and stores |
-
----
-
-## 🔐 Security & Privacy
-
-- See `SECURITY.md` for the threat model, security assumptions, and recommended hardening steps.
-- See `PRIVACY.md` for what behavioral data is collected and how to treat it.
-
----
-
-## 🐛 Troubleshooting
-
-### Services Not Starting
-
-```bash
-# Check logs
-./scripts/dev logs
-
-# Verify dependencies
-./scripts/dev check-health
-
-# Restart services
-./scripts/dev restart
-```
-
-### No Data Being Collected
-
-```bash
-# Verify collectors are running
-./scripts/dev status
-
-# Monitor Redis events
-./scripts/dev debug-redis
-# Then type/move mouse to see events
-```
-
-### Database Connection Errors
-
-```bash
-# Test Redis
-redis-cli ping  # Should return PONG
-
-# Test InfluxDB
-curl http://localhost:8086/ping  # Should return 204
-
-# Or use dev script
-./scripts/dev debug-influx
-```
-
-See `docs/TROUBLESHOOTING.md` for more.
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please read `CONTRIBUTING.md` first.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing`)
-3. Run checks (`./scripts/dev lint` and `./scripts/dev format`)
-4. Commit your changes (`git commit -m 'Add feature'`)
-5. Push to branch (`git push origin feature/amazing`)
-6. Open a Pull Request
-
----
-
-## 📝 License
-
-MIT License - See `LICENSE` file for details.
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture and design |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and changes |
+| [SECURITY.md](SECURITY.md) | Security model and guidelines |
+| [PRIVACY.md](PRIVACY.md) | Privacy policy and data handling |
+| [docs/CONTROL_SCRIPTS.md](docs/CONTROL_SCRIPTS.md) | CLI reference |
 
 ---
 
 ## 🙏 Acknowledgments
 
-- Built with Python, Rust, Redis, InfluxDB
-- ML: scikit-learn, ONNX Runtime
-- Data: Polars, NumPy
+Built with:
+- **Languages**: Python 3.12+, Rust
+- **Databases**: Redis, InfluxDB, SQLite
+- **ML**: scikit-learn, ONNX Runtime
+- **Data**: Polars, NumPy
 
 ---
 
-## 📞 Support
-
-- **Issues:** GitHub Issues
-- **Documentation:** `docs/` directory
-- **Developer Console:** `./scripts/dev help`
-
----
+<div align="center">
 
 **Made with ❤️ for secure, transparent authentication**
+
+[Report Bug](https://github.com/yourusername/SecLyzer/issues) •
+[Request Feature](https://github.com/yourusername/SecLyzer/issues)
+
+</div>
