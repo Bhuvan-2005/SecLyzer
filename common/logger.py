@@ -15,6 +15,23 @@ from typing import Optional
 class JSONFormatter(logging.Formatter):
     """Custom formatter that outputs JSON logs"""
 
+    @staticmethod
+    def _make_serializable(obj):
+        """Convert non-serializable objects to serializable format"""
+        import numpy as np
+        
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        elif isinstance(obj, dict):
+            return {k: JSONFormatter._make_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [JSONFormatter._make_serializable(item) for item in obj]
+        elif hasattr(obj, '__dict__'):
+            return str(obj)
+        return obj
+
     def format(self, record):
         log_data = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -30,15 +47,20 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "correlation_id"):
             log_data["correlation_id"] = record.correlation_id
 
-        # Add extra fields
+        # Add extra fields (make serializable)
         if hasattr(record, "extra_data"):
-            log_data["extra"] = record.extra_data
+            log_data["extra"] = self._make_serializable(record.extra_data)
 
         # Add exception info if present
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        return json.dumps(log_data)
+        try:
+            return json.dumps(log_data)
+        except TypeError:
+            # Fallback if still not serializable
+            log_data["extra"] = str(log_data.get("extra", ""))
+            return json.dumps(log_data)
 
 
 def setup_logger(name: str, level: Optional[str] = None) -> logging.Logger:

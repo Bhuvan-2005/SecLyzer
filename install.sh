@@ -570,7 +570,12 @@ setup_python() {
     sudo -u "$ACTUAL_USER" bash -c "
         source '$VENV_PATH/bin/activate'
         pip install -q --upgrade pip
-        pip install -q redis polars influxdb-client scikit-learn numpy pydantic onnxruntime joblib
+        # Install from requirements.txt if available, otherwise install directly
+        if [ -f '$SCRIPT_DIR/requirements.txt' ]; then
+            pip install -q -r '$SCRIPT_DIR/requirements.txt'
+        else
+            pip install -q redis polars influxdb-client scikit-learn numpy pydantic onnxruntime joblib pyyaml
+        fi
     " 2>/dev/null
     
     mark_step_done "python"
