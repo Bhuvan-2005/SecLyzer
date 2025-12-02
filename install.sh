@@ -20,7 +20,17 @@
 #
 # ============================================================================
 
-set -e
+# Don't exit on error - we handle errors ourselves
+set +e
+
+# Error handler
+handle_error() {
+    local line=$1
+    local cmd=$2
+    echo -e "${RED}✗ Error at line $line: $cmd${NC}"
+    echo "  Check the output above for details."
+}
+trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 
 # Colors
 RED='\033[0;31m'
@@ -287,13 +297,37 @@ install_dependencies() {
     echo ""
     echo "Installing system dependencies..."
     
-    apt-get update -qq
+    # Update package lists with timeout
+    echo "  Updating package lists..."
+    if ! timeout 120 apt-get update -qq 2>/dev/null; then
+        echo -e "${YELLOW}⚠${NC} apt-get update had issues, continuing anyway..."
+    fi
     
-    DEPS="build-essential pkg-config libx11-dev libxext-dev libxtst-dev \
-          python3 python3-pip python3-venv python3-dev \
-          sqlite3 curl git bc coreutils"
+    # Install packages one category at a time for better error handling
+    echo "  Installing build tools..."
+    apt-get install -y build-essential pkg-config 2>&1 | tail -1 || true
     
-    apt-get install -y $DEPS > /dev/null 2>&1
+    echo "  Installing X11 development libraries..."
+    apt-get install -y libx11-dev libxext-dev libxtst-dev 2>&1 | tail -1 || true
+    
+    echo "  Installing Python..."
+    apt-get install -y python3 python3-pip python3-venv python3-dev 2>&1 | tail -1 || true
+    
+    echo "  Installing utilities..."
+    apt-get install -y sqlite3 curl git bc coreutils 2>&1 | tail -1 || true
+    
+    # Verify critical dependencies
+    local missing=""
+    command -v python3 &>/dev/null || missing="$missing python3"
+    command -v curl &>/dev/null || missing="$missing curl"
+    command -v git &>/dev/null || missing="$missing git"
+    command -v sqlite3 &>/dev/null || missing="$missing sqlite3"
+    
+    if [ -n "$missing" ]; then
+        echo -e "${RED}✗${NC} Missing critical dependencies:$missing"
+        echo "  Please install them manually and re-run the installer."
+        exit 1
+    fi
     
     mark_step_done "dependencies"
     echo -e "${GREEN}✓${NC} System dependencies installed"
@@ -315,7 +349,10 @@ install_redis() {
     echo "Installing Redis..."
     
     if ! command -v redis-server &> /dev/null; then
-        apt-get install -y redis-server redis-tools > /dev/null 2>&1
+        echo "  Installing Redis packages..."
+        apt-get install -y redis-server redis-tools 2>&1 | tail -3 || {
+            echo -e "${YELLOW}⚠${NC} Redis installation had issues"
+        }
     fi
     
     # Configure Redis
@@ -367,9 +404,11 @@ install_influxdb() {
         echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main" | \
             tee /etc/apt/sources.list.d/influxdata.list > /dev/null
         
-        apt-get update -qq
+        apt-get update -qq 2>/dev/null || true
         echo "  Installing InfluxDB package..."
-        apt-get install -y influxdb2 > /dev/null 2>&1
+        apt-get install -y influxdb2 2>&1 | tail -3 || {
+            echo -e "${YELLOW}⚠${NC} InfluxDB installation had issues"
+        }
     fi
     
     # Start service
