@@ -58,7 +58,7 @@ SecLyzer is a **behavioral biometric authentication system** that learns your un
 ### Developer Experience
 - 🛠️ **Comprehensive CLI** - 30+ commands for management and debugging
 - 🛠️ **178 Unit Tests** - Full test coverage
-- 🛠️ **Structured Logging** - JSON logs with correlation IDs
+- 🛠️ **Structured Logging** - JSON logs with correlation IDs.
 - 🛠️ **Hot Reload** - Reload models without restart
 
 ---
