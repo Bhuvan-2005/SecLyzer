@@ -13,10 +13,34 @@ NC='\033[0m'
 
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_PATH="${VENV_PATH:-/home/$USER/Documents/Projects/venv}"
 INSTALL_DIR="/opt/seclyzer"
 LOG_DIR="/var/log/seclyzer"
 USE_SYSTEMD=false
+
+# Auto-detect virtual environment
+detect_venv() {
+    local user_home="${HOME:-$(getent passwd "$USER" | cut -d: -f6)}"
+    local paths=(
+        "$VENV_PATH"
+        "$user_home/.seclyzer-venv"
+        "$user_home/.venv"
+        "$user_home/venv"
+        "$user_home/Documents/Projects/venv"
+        "/opt/seclyzer/venv"
+    )
+    
+    for p in "${paths[@]}"; do
+        if [ -n "$p" ] && [ -f "$p/bin/activate" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    
+    # Fallback - create one if needed
+    echo "$user_home/.seclyzer-venv"
+}
+
+VENV_PATH=$(detect_venv)
 
 # Check if systemd services exist
 if systemctl list-units --all 2>/dev/null | grep -q "seclyzer-"; then

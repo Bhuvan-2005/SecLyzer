@@ -201,9 +201,11 @@ def get_database(db_path: str = None) -> Database:
     """Get database instance"""
     if db_path is None:
         # Try default locations
+        home = Path.home()
         for path in [
             "/var/lib/seclyzer/databases/seclyzer.db",
-            "/home/bhuvan/Documents/Projects/SecLyzer/data/databases/seclyzer.db",
+            str(home / ".seclyzer/databases/seclyzer.db"),
+            str(Path(__file__).parent.parent / "data/databases/seclyzer.db"),
         ]:
             if Path(path).exists() or Path(path).parent.exists():
                 db_path = path

@@ -5,7 +5,7 @@
 Run the interactive installer:
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 sudo ./install.sh
 ```
 
@@ -240,7 +240,7 @@ To upgrade SecLyzer to a new version:
 
 3. **Pull new code:**
    ```bash
-   cd /home/bhuvan/Documents/Projects/SecLyzer
+   cd ~/SecLyzer
    git pull  # Or download new version
    ```
 

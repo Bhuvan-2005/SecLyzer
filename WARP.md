@@ -13,11 +13,11 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - **Keep style consistent:** `./scripts/dev format` then `./scripts/dev lint`
 
 ### Python environment
-- Virtualenv is expected at `/home/bhuvan/Documents/Projects/venv`.
+- Virtualenv is expected at `~/.seclyzer-venv`.
 - Always activate it before running Python tooling for this project:
   ```bash
-  source /home/bhuvan/Documents/Projects/venv/bin/activate
-  export PYTHONPATH=/home/bhuvan/Documents/Projects/SecLyzer:$PYTHONPATH
+  source ~/.seclyzer-venv/bin/activate
+  export PYTHONPATH=~/SecLyzer:$PYTHONPATH
   ```
 
 ### High-level control scripts

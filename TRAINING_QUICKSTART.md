@@ -18,7 +18,7 @@
 
 ```bash
 cd ~/Documents/Projects/SecLyzer
-source /home/bhuvan/Documents/Projects/venv/bin/activate
+source ~/.seclyzer-venv/bin/activate
 export PYTHONPATH=$PWD:$PYTHONPATH
 
 python scripts/train_models.py --check

@@ -77,8 +77,8 @@ Before training, you need sufficient behavioral data:
 
 ```bash
 # Activate virtual environment
-source /home/bhuvan/Documents/Projects/venv/bin/activate
-cd /home/bhuvan/Documents/Projects/SecLyzer
+source ~/.seclyzer-venv/bin/activate
+cd ~/SecLyzer
 
 # Check if you have enough data
 python scripts/train_models.py --check
@@ -310,9 +310,9 @@ OneClassSVM(
 
 ```bash
 # Activate virtual environment
-source /home/bhuvan/Documents/Projects/venv/bin/activate
-cd /home/bhuvan/Documents/Projects/SecLyzer
-export PYTHONPATH=/home/bhuvan/Documents/Projects/SecLyzer:$PYTHONPATH
+source ~/.seclyzer-venv/bin/activate
+cd ~/SecLyzer
+export PYTHONPATH=~/SecLyzer:$PYTHONPATH
 ```
 
 #### Step 2: Verify Data Collection

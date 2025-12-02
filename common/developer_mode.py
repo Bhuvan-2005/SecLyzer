@@ -263,9 +263,12 @@ def init_developer_mode(config_path=None):
     global _dev_mode_instance
     if config_path is None:
         # Try multiple locations
+        home = os.path.expanduser("~")
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         for path in [
             "/etc/seclyzer/dev_mode.yml",
-            "/home/bhuvan/Documents/Projects/SecLyzer/config/dev_mode.yml",
+            os.path.join(home, ".seclyzer/dev_mode.yml"),
+            os.path.join(script_dir, "config/dev_mode.yml"),
         ]:
             if os.path.exists(path):
                 config_path = path

@@ -88,7 +88,7 @@ echo -n "YourSecretPassword123" | sha256sum
 
 ## Configuration
 
-Edit [`config/dev_mode.yml`](file:///home/bhuvan/Documents/Projects/SecLyzer/config/dev_mode.yml) to customize:
+Edit [`config/dev_mode.yml`](file://~/SecLyzer/config/dev_mode.yml) to customize:
 
 ```yaml
 # Enable/disable developer mode entirely
