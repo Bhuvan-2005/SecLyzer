@@ -898,6 +898,117 @@ setup_influx_token() {
     echo "  seclyzer restart"
 }
 
+diagnose() {
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║           SecLyzer Diagnostic Report                   ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Check InfluxDB token
+    echo -e "${BLUE}InfluxDB Token:${NC}"
+    local token_found=false
+    for loc in "/etc/seclyzer/influxdb_token" "$HOME/.seclyzer/influxdb_token" "$HOME/.config/seclyzer/influxdb_token"; do
+        if [ -f "$loc" ]; then
+            local token_preview=$(head -c 20 "$loc" 2>/dev/null)
+            if [ -n "$token_preview" ]; then
+                echo -e "  ${GREEN}✓${NC} Found at: $loc"
+                echo "    Preview: ${token_preview}..."
+                token_found=true
+            else
+                echo -e "  ${YELLOW}⚠${NC} Empty file: $loc"
+            fi
+        fi
+    done
+    if [ "$token_found" = false ]; then
+        echo -e "  ${RED}✗${NC} No token file found!"
+        echo "    Run: seclyzer setup-token <your-token>"
+    fi
+    echo ""
+    
+    # Check InfluxDB connection
+    echo -e "${BLUE}InfluxDB Connection:${NC}"
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} InfluxDB is running at http://localhost:8086"
+        
+        # Test token if found
+        if [ "$token_found" = true ]; then
+            local token=$(cat "$HOME/.seclyzer/influxdb_token" 2>/dev/null || cat "/etc/seclyzer/influxdb_token" 2>/dev/null)
+            if [ -n "$token" ]; then
+                local test_result=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -H "Authorization: Token $token" \
+                    "http://localhost:8086/api/v2/buckets?org=seclyzer" 2>/dev/null)
+                if [ "$test_result" = "200" ]; then
+                    echo -e "  ${GREEN}✓${NC} Token is valid"
+                else
+                    echo -e "  ${RED}✗${NC} Token is invalid (HTTP $test_result)"
+                    echo "    Get a new token from http://localhost:8086"
+                fi
+            fi
+        fi
+    else
+        echo -e "  ${RED}✗${NC} InfluxDB is not running"
+        echo "    Start with: sudo systemctl start influxdb"
+    fi
+    echo ""
+    
+    # Check Redis
+    echo -e "${BLUE}Redis Connection:${NC}"
+    if redis-cli ping > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Redis is running"
+    else
+        echo -e "  ${RED}✗${NC} Redis is not running"
+        echo "    Start with: sudo systemctl start redis-server"
+    fi
+    echo ""
+    
+    # Check Python venv
+    echo -e "${BLUE}Python Environment:${NC}"
+    echo "  Detected venv: $VENV_PATH"
+    if [ -f "$VENV_PATH/bin/activate" ]; then
+        echo -e "  ${GREEN}✓${NC} Virtual environment exists"
+    else
+        echo -e "  ${RED}✗${NC} Virtual environment not found"
+        echo "    Create with: python3 -m venv ~/.seclyzer-venv"
+    fi
+    echo ""
+    
+    # Check collectors
+    echo -e "${BLUE}Collector Binaries:${NC}"
+    for bin in keyboard_collector mouse_collector app_monitor; do
+        local found=false
+        for dir in "$PROJECT_ROOT/collectors/$bin/target/release" "/opt/seclyzer/bin" "/usr/local/bin"; do
+            if [ -x "$dir/$bin" ]; then
+                echo -e "  ${GREEN}✓${NC} $bin: $dir/$bin"
+                found=true
+                break
+            fi
+        done
+        if [ "$found" = false ]; then
+            echo -e "  ${RED}✗${NC} $bin: not found"
+        fi
+    done
+    echo ""
+    
+    # Check log directory
+    echo -e "${BLUE}Log Directory:${NC}"
+    if [ -d "$LOG_DIR" ]; then
+        echo -e "  ${GREEN}✓${NC} $LOG_DIR exists"
+        if [ -w "$LOG_DIR" ]; then
+            echo -e "  ${GREEN}✓${NC} Writable by current user"
+        else
+            echo -e "  ${YELLOW}⚠${NC} Not writable by current user"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} $LOG_DIR does not exist"
+    fi
+    echo ""
+    
+    echo -e "${CYAN}If you see token errors, run:${NC}"
+    echo "  seclyzer setup-token <your-influxdb-token>"
+    echo ""
+    echo "To get a token, visit http://localhost:8086 and create an API token."
+}
+
 show_resources() {
     echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║      SecLyzer Resource Usage                      ║${NC}"
@@ -970,6 +1081,7 @@ show_help() {
     echo "  logs [component]    View logs (all, auth, keystroke, mouse, app)"
     echo "  credentials         Show InfluxDB web interface credentials"
     echo "  setup-token <token> Set InfluxDB API token (if not set during install)"
+    echo "  diagnose            Run diagnostic checks (token, connections, etc.)"
     echo "  version             Show version information"
     echo ""
     echo -e "${CYAN}EXAMPLES:${NC}"
@@ -1032,6 +1144,9 @@ case "${1:-}" in
         ;;
     setup-token)
         setup_influx_token "$2"
+        ;;
+    diagnose|diag)
+        diagnose
         ;;
     disable)
         disable_authentication
