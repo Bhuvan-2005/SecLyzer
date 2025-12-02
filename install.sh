@@ -642,49 +642,298 @@ create_symlinks() {
 create_uninstaller() {
     cat > "$INSTALL_DIR/uninstall.sh" << 'UNINSTALL_EOF'
 #!/bin/bash
+# ============================================================================
+# SecLyzer Uninstallation Script
+# Auto-generated during installation
+# ============================================================================
+#
+# Usage:
+#   ./uninstall.sh                  # Interactive mode
+#   ./uninstall.sh --auto           # Fully automated (keeps data)
+#   ./uninstall.sh --auto --purge   # Fully automated (removes everything)
+#   ./uninstall.sh --help           # Show help
+#
+# Environment variables:
+#   SECLYZER_PASSWORD    - Admin password for verification
+#
+# ============================================================================
+
 set -e
-source "$(dirname "$0")/.install_metadata"
 
-echo "SecLyzer Uninstaller"
-echo ""
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root"
+# Load installation metadata
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+METADATA_FILE="$SCRIPT_DIR/.install_metadata"
+
+if [ ! -f "$METADATA_FILE" ]; then
+    echo -e "${RED}✗ Installation metadata not found${NC}"
+    echo "Cannot proceed with uninstallation."
     exit 1
 fi
 
-# Verify password
-if [ -f "$CONFIG_DIR/.password_hash" ]; then
-    read -s -p "Enter SecLyzer password: " pwd
+source "$METADATA_FILE"
+
+# Parse arguments
+AUTO_MODE=false
+PURGE_MODE=false
+SHOW_HELP=false
+SKIP_PASSWORD=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto|-a)
+            AUTO_MODE=true
+            shift
+            ;;
+        --purge|-p)
+            PURGE_MODE=true
+            shift
+            ;;
+        --skip-password)
+            SKIP_PASSWORD=true
+            shift
+            ;;
+        --help|-h)
+            SHOW_HELP=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            exit 1
+            ;;
+    esac
+done
+
+# Show help
+if [ "$SHOW_HELP" = true ]; then
+    echo "SecLyzer Uninstallation Script"
     echo ""
-    hash=$(echo -n "$pwd" | sha256sum | cut -d' ' -f1)
-    stored=$(cat "$CONFIG_DIR/.password_hash")
-    if [ "$hash" != "$stored" ]; then
-        echo "Incorrect password"
-        exit 1
-    fi
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --auto, -a        Fully automated uninstallation (keeps data by default)"
+    echo "  --purge, -p       Remove all data including models and logs"
+    echo "  --skip-password   Skip password verification (use with caution)"
+    echo "  --help, -h        Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  SECLYZER_PASSWORD    Admin password for verification"
+    echo ""
+    echo "Examples:"
+    echo "  sudo ./uninstall.sh                    # Interactive"
+    echo "  sudo ./uninstall.sh --auto             # Auto, keep data"
+    echo "  sudo ./uninstall.sh --auto --purge     # Auto, remove everything"
+    echo "  sudo SECLYZER_PASSWORD=xxx ./uninstall.sh --auto"
+    echo ""
+    exit 0
 fi
 
-echo "Stopping services..."
-systemctl stop seclyzer-keyboard seclyzer-mouse seclyzer-app seclyzer-extractors 2>/dev/null || true
-systemctl disable seclyzer-keyboard seclyzer-mouse seclyzer-app seclyzer-extractors 2>/dev/null || true
+# Banner
+echo -e "${BLUE}"
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║           SecLyzer Uninstallation Script                  ║"
+echo "╚═══════════════════════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# Check root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}✗ Please run as root (use sudo)${NC}"
+    exit 1
+fi
+
+# Show what will be removed
+echo "Installation found:"
+echo "  Install Dir:  $INSTALL_DIR"
+echo "  Data Dir:     $DATA_DIR"
+echo "  Config Dir:   $CONFIG_DIR"
+echo "  Log Dir:      $LOG_DIR"
+echo ""
+
+# Password verification
+verify_password() {
+    if [ "$SKIP_PASSWORD" = true ]; then
+        return 0
+    fi
+    
+    local password_file="$CONFIG_DIR/.password_hash"
+    
+    if [ ! -f "$password_file" ]; then
+        return 0  # No password set
+    fi
+    
+    local stored_hash=$(cat "$password_file")
+    local entered_password=""
+    local entered_hash=""
+    
+    # Check environment variable first
+    if [ -n "$SECLYZER_PASSWORD" ]; then
+        entered_hash=$(echo -n "$SECLYZER_PASSWORD" | sha256sum | cut -d' ' -f1)
+        if [ "$entered_hash" = "$stored_hash" ]; then
+            echo -e "${GREEN}✓${NC} Password verified (from environment)"
+            return 0
+        else
+            echo -e "${RED}✗ Incorrect password in SECLYZER_PASSWORD${NC}"
+            return 1
+        fi
+    fi
+    
+    # Interactive password prompt
+    if [ "$AUTO_MODE" = true ]; then
+        echo -e "${RED}✗ Password required. Set SECLYZER_PASSWORD or use --skip-password${NC}"
+        return 1
+    fi
+    
+    read -s -p "Enter SecLyzer password: " entered_password
+    echo ""
+    
+    entered_hash=$(echo -n "$entered_password" | sha256sum | cut -d' ' -f1)
+    
+    if [ "$entered_hash" = "$stored_hash" ]; then
+        echo -e "${GREEN}✓${NC} Password verified"
+        return 0
+    else
+        echo -e "${RED}✗ Incorrect password${NC}"
+        return 1
+    fi
+}
+
+# Verify password
+if ! verify_password; then
+    echo "Uninstallation cancelled."
+    exit 1
+fi
+
+# Confirmation (interactive mode only)
+if [ "$AUTO_MODE" = false ]; then
+    echo -e "${YELLOW}This will remove SecLyzer from your system.${NC}"
+    echo ""
+    read -p "Continue with uninstallation? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Uninstallation cancelled."
+        exit 0
+    fi
+    echo ""
+fi
+
+echo "Starting uninstallation..."
+echo ""
+
+# Stop all running processes
+echo "Stopping SecLyzer processes..."
+pkill -f "seclyzer_daemon.py" 2>/dev/null || true
+pkill -f "keystroke_extractor.py" 2>/dev/null || true
+pkill -f "mouse_extractor.py" 2>/dev/null || true
+pkill -f "app_tracker.py" 2>/dev/null || true
+pkill -f "keyboard_collector" 2>/dev/null || true
+pkill -f "mouse_collector" 2>/dev/null || true
+pkill -f "app_monitor" 2>/dev/null || true
+echo -e "${GREEN}✓${NC} Processes stopped"
+
+# Stop and disable systemd services
+echo "Removing systemd services..."
+systemctl stop seclyzer-keyboard.service 2>/dev/null || true
+systemctl stop seclyzer-mouse.service 2>/dev/null || true
+systemctl stop seclyzer-app.service 2>/dev/null || true
+systemctl stop seclyzer-extractors.service 2>/dev/null || true
+
+systemctl disable seclyzer-keyboard.service 2>/dev/null || true
+systemctl disable seclyzer-mouse.service 2>/dev/null || true
+systemctl disable seclyzer-app.service 2>/dev/null || true
+systemctl disable seclyzer-extractors.service 2>/dev/null || true
+
 rm -f /etc/systemd/system/seclyzer-*.service
 systemctl daemon-reload
+echo -e "${GREEN}✓${NC} Systemd services removed"
 
-echo "Removing files..."
-rm -rf "$INSTALL_DIR"
+# Remove symlinks
+echo "Removing symlinks..."
+rm -f /usr/local/bin/seclyzer 2>/dev/null || true
+rm -f /usr/local/bin/seclyzer-dev 2>/dev/null || true
+echo -e "${GREEN}✓${NC} Symlinks removed"
+
+# Remove configuration
+echo "Removing configuration..."
 rm -rf "$CONFIG_DIR"
-rm -f /usr/local/bin/seclyzer /usr/local/bin/seclyzer-dev
+echo -e "${GREEN}✓${NC} Configuration removed"
 
-read -p "Remove data ($DATA_DIR)? [y/N]: " r
-[[ "$r" =~ ^[Yy]$ ]] && rm -rf "$DATA_DIR"
+# Handle data directory
+REMOVE_DATA=false
+if [ "$PURGE_MODE" = true ]; then
+    REMOVE_DATA=true
+elif [ "$AUTO_MODE" = false ]; then
+    echo ""
+    read -p "Remove data directory ($DATA_DIR)? This includes trained models! [y/N]: " r
+    [[ "$r" =~ ^[Yy]$ ]] && REMOVE_DATA=true
+fi
 
-read -p "Remove logs ($LOG_DIR)? [y/N]: " r
-[[ "$r" =~ ^[Yy]$ ]] && rm -rf "$LOG_DIR"
+if [ "$REMOVE_DATA" = true ]; then
+    echo "Removing data directory..."
+    rm -rf "$DATA_DIR"
+    echo -e "${GREEN}✓${NC} Data removed"
+else
+    echo -e "${YELLOW}⚠${NC} Data directory preserved: $DATA_DIR"
+fi
 
-echo "SecLyzer uninstalled"
+# Handle log directory
+REMOVE_LOGS=false
+if [ "$PURGE_MODE" = true ]; then
+    REMOVE_LOGS=true
+elif [ "$AUTO_MODE" = false ]; then
+    read -p "Remove log directory ($LOG_DIR)? [y/N]: " r
+    [[ "$r" =~ ^[Yy]$ ]] && REMOVE_LOGS=true
+fi
+
+if [ "$REMOVE_LOGS" = true ]; then
+    echo "Removing log directory..."
+    rm -rf "$LOG_DIR"
+    echo -e "${GREEN}✓${NC} Logs removed"
+else
+    echo -e "${YELLOW}⚠${NC} Log directory preserved: $LOG_DIR"
+fi
+
+# Remove installation directory (do this last since we're running from it)
+echo "Removing installation directory..."
+# Copy this script to temp and continue from there
+TEMP_CLEANUP="/tmp/seclyzer_cleanup_$$.sh"
+cat > "$TEMP_CLEANUP" << CLEANUP_EOF
+#!/bin/bash
+sleep 1
+rm -rf "$INSTALL_DIR"
+rm -f "$TEMP_CLEANUP"
+CLEANUP_EOF
+chmod +x "$TEMP_CLEANUP"
+nohup "$TEMP_CLEANUP" > /dev/null 2>&1 &
+
+echo -e "${GREEN}✓${NC} Installation directory will be removed"
+
+# Final message
+echo ""
+echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║       SecLyzer Uninstallation Complete!                   ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+if [ "$REMOVE_DATA" = false ]; then
+    echo -e "${YELLOW}Note: Your data is preserved at: $DATA_DIR${NC}"
+    echo "To remove it manually: sudo rm -rf $DATA_DIR"
+    echo ""
+fi
+
+if [ "$REMOVE_LOGS" = false ]; then
+    echo -e "${YELLOW}Note: Your logs are preserved at: $LOG_DIR${NC}"
+    echo "To remove them manually: sudo rm -rf $LOG_DIR"
+    echo ""
+fi
+
+echo "Thank you for using SecLyzer!"
 UNINSTALL_EOF
     chmod +x "$INSTALL_DIR/uninstall.sh"
+    echo -e "${GREEN}✓${NC} Uninstall script created"
 }
 
 # Show completion message
@@ -721,7 +970,9 @@ show_completion() {
     echo "  seclyzer-dev help     # Show all developer commands"
     echo ""
     echo "To uninstall:"
-    echo "  sudo $INSTALL_DIR/uninstall.sh"
+    echo "  sudo $INSTALL_DIR/uninstall.sh              # Interactive"
+    echo "  sudo $INSTALL_DIR/uninstall.sh --auto       # Automated (keeps data)"
+    echo "  sudo $INSTALL_DIR/uninstall.sh --auto --purge  # Remove everything"
     echo ""
 }
 

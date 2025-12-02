@@ -198,46 +198,68 @@ Raw Events → Redis → Feature Extraction → InfluxDB → ML Inference → De
 
 ## 💿 Installation
 
-### Option 1: Automated Install (Recommended)
+### Option 1: Fully Automated (Recommended)
 
 ```bash
-./install.sh
+# Clone and install with one command
+git clone https://github.com/yourusername/SecLyzer.git
+cd SecLyzer
+sudo ./install.sh --auto
 ```
 
-The installer will:
-1. Install system dependencies (Redis, InfluxDB)
-2. Create Python virtual environment
-3. Install Python packages
-4. Compile Rust collectors
-5. Set up databases
-6. Create directory structure
+This will:
+- Install all dependencies (Redis, InfluxDB, Python packages)
+- Build Rust collectors
+- Set up databases
+- Create systemd services
+- Generate admin password (displayed at end)
 
-### Option 2: Manual Install
+### Option 2: Interactive Install
 
 ```bash
-# 1. Install dependencies
-sudo apt install redis-server influxdb2 python3.12 python3.12-venv
-
-# 2. Create virtual environment
-python3.12 -m venv venv
-source venv/bin/activate
-pip install -r requirements_ml.txt
-
-# 3. Build Rust collectors
-cd collectors && ./build_all.sh
-
-# 4. Set up databases
-./scripts/setup_redis.sh
-./scripts/setup_influxdb.sh
-./scripts/setup_sqlite.sh
+sudo ./install.sh
 ```
 
-### Option 3: Systemd Auto-Start
+Prompts for customization of paths, passwords, and options.
 
-For production deployment with auto-start on boot:
+### Option 3: Custom Installation
 
 ```bash
-sudo ./scripts/install_systemd.sh $USER
+# With environment variables
+sudo SECLYZER_PASSWORD=mypassword \
+     SECLYZER_INSTALL_DIR=/opt/seclyzer \
+     ./install.sh --auto
+
+# Skip certain components
+sudo ./install.sh --auto --no-redis      # If Redis already installed
+sudo ./install.sh --auto --no-influxdb   # If InfluxDB already installed
+sudo ./install.sh --auto --no-autostart  # Don't enable systemd services
+```
+
+### Installation Options
+
+| Option | Description |
+|--------|-------------|
+| `--auto` | Fully automated, no prompts |
+| `--no-redis` | Skip Redis installation |
+| `--no-influxdb` | Skip InfluxDB installation |
+| `--no-autostart` | Don't enable systemd auto-start |
+| `--skip-build` | Skip building Rust collectors |
+
+### Uninstallation
+
+```bash
+# Interactive uninstall
+sudo /opt/seclyzer/uninstall.sh
+
+# Automated uninstall (keeps data)
+sudo /opt/seclyzer/uninstall.sh --auto
+
+# Complete removal (removes all data)
+sudo /opt/seclyzer/uninstall.sh --auto --purge
+
+# With password from environment
+sudo SECLYZER_PASSWORD=xxx /opt/seclyzer/uninstall.sh --auto --purge
 ```
 
 ---
