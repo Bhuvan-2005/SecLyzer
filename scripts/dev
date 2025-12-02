@@ -2,7 +2,8 @@
 # SecLyzer Developer Management Script
 # Advanced control panel for developers
 
-set -e
+# Don't exit on error - handle errors ourselves
+set +e
 
 # Colors
 GREEN='\033[0;32m'

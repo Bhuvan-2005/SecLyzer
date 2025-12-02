@@ -2,7 +2,8 @@
 # SecLyzer Control Script
 # Complete control interface for SecLyzer behavioral authentication system
 
-set -e
+# Don't exit on error - handle errors ourselves
+set +e
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -41,6 +42,19 @@ detect_venv() {
 }
 
 VENV_PATH=$(detect_venv)
+
+# Verify venv exists
+check_venv() {
+    if [ ! -f "$VENV_PATH/bin/activate" ]; then
+        echo -e "${RED}✗ Python virtual environment not found at: $VENV_PATH${NC}"
+        echo ""
+        echo "Please create one:"
+        echo "  python3 -m venv ~/.seclyzer-venv"
+        echo "  source ~/.seclyzer-venv/bin/activate"
+        echo "  pip install redis polars influxdb-client scikit-learn numpy"
+        exit 1
+    fi
+}
 
 # Check if systemd services exist
 if systemctl list-units --all 2>/dev/null | grep -q "seclyzer-"; then
@@ -180,32 +194,77 @@ start_services() {
     echo ""
     
     # Start Redis if not running
-    if ! redis-cli ping > /dev/null 2>&1; then
-        echo "Starting Redis..."
-        sudo systemctl start redis-server
+    echo -n "Redis: "
+    if redis-cli ping > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} already running"
+    else
+        sudo systemctl start redis-server 2>/dev/null || sudo service redis-server start 2>/dev/null || true
+        sleep 1
+        if redis-cli ping > /dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} started"
+        else
+            echo -e "${RED}✗${NC} failed to start"
+        fi
     fi
-    echo -e "${GREEN}✓${NC} Redis running"
     
     # Start InfluxDB if not running
-    if ! curl -s http://localhost:8086/ping > /dev/null 2>&1; then
-        echo "Starting InfluxDB..."
-        sudo systemctl start influxdb
+    echo -n "InfluxDB: "
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC} already running"
+    else
+        sudo systemctl start influxdb 2>/dev/null || sudo service influxdb start 2>/dev/null || true
+        sleep 2
+        if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} started"
+        else
+            echo -e "${YELLOW}⚠${NC} not available (optional)"
+        fi
     fi
-    echo -e "${GREEN}✓${NC} InfluxDB running"
+    
+    echo ""
     
     # Start collectors
+    echo "Starting collectors..."
     if [ "$USE_SYSTEMD" = true ]; then
         sudo systemctl start seclyzer-keyboard 2>/dev/null || true
         sudo systemctl start seclyzer-mouse 2>/dev/null || true
         sudo systemctl start seclyzer-app 2>/dev/null || true
-        echo -e "${GREEN}✓${NC} Collectors started (systemd)"
+        sleep 2
     else
-        "$PROJECT_ROOT/scripts/start_collectors.sh" 2>/dev/null || true
-        echo -e "${GREEN}✓${NC} Collectors started (manual)"
+        # Manual start
+        if [ -x "$PROJECT_ROOT/scripts/start_collectors.sh" ]; then
+            "$PROJECT_ROOT/scripts/start_collectors.sh"
+        elif [ -x "/opt/seclyzer/scripts/start_collectors.sh" ]; then
+            "/opt/seclyzer/scripts/start_collectors.sh"
+        else
+            # Try to start directly
+            local collector_dir="$PROJECT_ROOT/collectors"
+            if [ -x "$collector_dir/keyboard_collector/target/release/keyboard_collector" ]; then
+                sudo nohup "$collector_dir/keyboard_collector/target/release/keyboard_collector" > /dev/null 2>&1 &
+            fi
+            if [ -x "$collector_dir/mouse_collector/target/release/mouse_collector" ]; then
+                sudo nohup "$collector_dir/mouse_collector/target/release/mouse_collector" > /dev/null 2>&1 &
+            fi
+            if [ -x "$collector_dir/app_monitor/target/release/app_monitor" ]; then
+                nohup "$collector_dir/app_monitor/target/release/app_monitor" > /dev/null 2>&1 &
+            fi
+        fi
+        sleep 2
+    fi
+    
+    # Check collector status
+    local collectors_running=0
+    pgrep -f "keyboard_collector" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} Keyboard collector"
+    pgrep -f "mouse_collector" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} Mouse collector"
+    pgrep -f "app_monitor" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} App monitor"
+    
+    if [ $collectors_running -eq 0 ]; then
+        echo -e "  ${RED}✗${NC} No collectors running"
+        echo "  Try: sudo $PROJECT_ROOT/scripts/start_collectors.sh"
     fi
     
     echo ""
-    echo -e "${GREEN}✓${NC} SecLyzer started"
+    echo -e "${GREEN}✓${NC} SecLyzer started ($collectors_running/3 collectors)"
     echo ""
     echo "Next steps:"
     echo "  seclyzer extractors    # Start feature extractors"
@@ -217,38 +276,74 @@ start_extractors() {
     echo -e "${GREEN}Starting Feature Extractors...${NC}"
     echo ""
     
-    mkdir -p "$LOG_DIR"
+    # Check venv first
+    check_venv
+    
+    # Create log directory with proper permissions
+    sudo mkdir -p "$LOG_DIR" 2>/dev/null || mkdir -p "$LOG_DIR" 2>/dev/null || true
+    sudo chown -R "$USER:$USER" "$LOG_DIR" 2>/dev/null || true
+    
+    # Activate venv once
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
     
     # Check if already running
     if pgrep -f "keystroke_extractor.py" > /dev/null; then
         echo -e "${YELLOW}⚠${NC} Keystroke extractor already running"
     else
-        source "$VENV_PATH/bin/activate"
-        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        echo -n "Starting keystroke extractor... "
         nohup python3 "$PROJECT_ROOT/processing/extractors/keystroke_extractor.py" > "$LOG_DIR/keystroke_extractor.log" 2>&1 &
-        echo -e "${GREEN}✓${NC} Keystroke extractor started"
+        sleep 1
+        if pgrep -f "keystroke_extractor.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗ Failed${NC}"
+            echo "  Check: cat $LOG_DIR/keystroke_extractor.log"
+        fi
     fi
     
     if pgrep -f "mouse_extractor.py" > /dev/null; then
         echo -e "${YELLOW}⚠${NC} Mouse extractor already running"
     else
-        source "$VENV_PATH/bin/activate"
-        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        echo -n "Starting mouse extractor... "
         nohup python3 "$PROJECT_ROOT/processing/extractors/mouse_extractor.py" > "$LOG_DIR/mouse_extractor.log" 2>&1 &
-        echo -e "${GREEN}✓${NC} Mouse extractor started"
+        sleep 1
+        if pgrep -f "mouse_extractor.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗ Failed${NC}"
+            echo "  Check: cat $LOG_DIR/mouse_extractor.log"
+        fi
     fi
     
     if pgrep -f "app_tracker.py" > /dev/null; then
         echo -e "${YELLOW}⚠${NC} App tracker already running"
     else
-        source "$VENV_PATH/bin/activate"
-        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        echo -n "Starting app tracker... "
         nohup python3 "$PROJECT_ROOT/processing/extractors/app_tracker.py" > "$LOG_DIR/app_tracker.log" 2>&1 &
-        echo -e "${GREEN}✓${NC} App tracker started"
+        sleep 1
+        if pgrep -f "app_tracker.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗ Failed${NC}"
+            echo "  Check: cat $LOG_DIR/app_tracker.log"
+        fi
     fi
     
     echo ""
-    echo -e "${GREEN}✓${NC} Feature extractors started"
+    # Final status check
+    local running=0
+    pgrep -f "keystroke_extractor.py" > /dev/null && ((running++))
+    pgrep -f "mouse_extractor.py" > /dev/null && ((running++))
+    pgrep -f "app_tracker.py" > /dev/null && ((running++))
+    
+    if [ $running -eq 3 ]; then
+        echo -e "${GREEN}✓${NC} All feature extractors running"
+    elif [ $running -gt 0 ]; then
+        echo -e "${YELLOW}⚠${NC} $running/3 extractors running"
+    else
+        echo -e "${RED}✗${NC} No extractors running - check logs in $LOG_DIR"
+    fi
 }
 
 stop_extractors() {
@@ -295,8 +390,13 @@ start_auth_engine() {
         return
     fi
     
-    mkdir -p "$LOG_DIR"
-    source "$(VENV_PATH)/venv/bin/activate"
+    # Check venv first
+    check_venv
+    
+    sudo mkdir -p "$LOG_DIR" 2>/dev/null || mkdir -p "$LOG_DIR" 2>/dev/null || true
+    sudo chown -R "$USER:$USER" "$LOG_DIR" 2>/dev/null || true
+    
+    source "$VENV_PATH/bin/activate"
     export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
     
     local daemon_args=""

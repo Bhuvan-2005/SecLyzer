@@ -4,7 +4,8 @@
 # Automatically detects binaries and starts all collectors
 # ============================================================================
 
-set -e
+# Don't exit on error - handle errors ourselves
+set +e
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
