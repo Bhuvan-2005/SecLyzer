@@ -795,10 +795,15 @@ show_credentials() {
     echo "  URL: http://localhost:8086"
     echo ""
     
-    local cred_file="/etc/seclyzer/.credentials"
-    local token_file="/etc/seclyzer/influxdb_token"
+    # Try multiple credential file locations
+    local cred_file=""
+    local token_file=""
+    for loc in "/etc/seclyzer" "$HOME/.seclyzer"; do
+        [ -z "$cred_file" ] && [ -f "$loc/.credentials" ] && cred_file="$loc/.credentials"
+        [ -z "$token_file" ] && [ -f "$loc/influxdb_token" ] && token_file="$loc/influxdb_token"
+    done
     
-    if [ -f "$cred_file" ]; then
+    if [ -n "$cred_file" ]; then
         echo "  Username: seclyzer_admin"
         local influx_pass=$(grep "INFLUX_PASSWORD=" "$cred_file" 2>/dev/null | cut -d'=' -f2)
         if [ -n "$influx_pass" ]; then
@@ -808,15 +813,23 @@ show_credentials() {
         fi
     else
         echo "  Username: seclyzer_admin"
-        echo "  Password: (credentials file not found at $cred_file)"
+        echo -e "  Password: ${RED}(credentials file not found)${NC}"
+        echo "    Checked: /etc/seclyzer/.credentials, ~/.seclyzer/.credentials"
     fi
     
     echo ""
     
-    if [ -f "$token_file" ]; then
+    if [ -n "$token_file" ]; then
         echo "  API Token: $(cat "$token_file")"
+        echo "  Token File: $token_file"
     else
-        echo "  API Token: (not found at $token_file)"
+        echo -e "  API Token: ${RED}(not found)${NC}"
+        echo "    Checked: /etc/seclyzer/influxdb_token, ~/.seclyzer/influxdb_token"
+        echo ""
+        echo -e "  ${YELLOW}⚠ Without a token, extractors cannot save data to InfluxDB!${NC}"
+        echo "    To fix: Visit http://localhost:8086, login, go to API Tokens,"
+        echo "    create a token with read/write access to 'behavioral_data' bucket,"
+        echo "    then run: seclyzer setup-token <your-token>"
     fi
     
     echo ""
@@ -844,6 +857,45 @@ show_credentials() {
     else
         echo -e "  Redis: ${RED}Not running${NC}"
     fi
+}
+
+setup_influx_token() {
+    local token="$1"
+    
+    if [ -z "$token" ]; then
+        echo -e "${RED}✗ No token provided${NC}"
+        echo ""
+        echo "Usage: seclyzer setup-token <your-influxdb-token>"
+        echo ""
+        echo "To get a token:"
+        echo "  1. Open http://localhost:8086 in your browser"
+        echo "  2. Login with your InfluxDB credentials"
+        echo "  3. Go to Data > API Tokens"
+        echo "  4. Generate a new token with read/write access to 'behavioral_data' bucket"
+        echo "  5. Copy the token and run: seclyzer setup-token <token>"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Setting up InfluxDB token...${NC}"
+    
+    # Save to user's home directory
+    local user_config_dir="$HOME/.seclyzer"
+    mkdir -p "$user_config_dir"
+    echo "$token" > "$user_config_dir/influxdb_token"
+    chmod 600 "$user_config_dir/influxdb_token"
+    
+    echo -e "${GREEN}✓${NC} Token saved to $user_config_dir/influxdb_token"
+    
+    # Try to save to system config if we have permission
+    if [ -w "/etc/seclyzer" ] || [ "$EUID" -eq 0 ]; then
+        echo "$token" > "/etc/seclyzer/influxdb_token"
+        chmod 600 "/etc/seclyzer/influxdb_token"
+        echo -e "${GREEN}✓${NC} Token also saved to /etc/seclyzer/influxdb_token"
+    fi
+    
+    echo ""
+    echo "Restart extractors to use the new token:"
+    echo "  seclyzer restart"
 }
 
 show_resources() {
@@ -917,6 +969,7 @@ show_help() {
     echo -e "${CYAN}MONITORING & INFO:${NC}"
     echo "  logs [component]    View logs (all, auth, keystroke, mouse, app)"
     echo "  credentials         Show InfluxDB web interface credentials"
+    echo "  setup-token <token> Set InfluxDB API token (if not set during install)"
     echo "  version             Show version information"
     echo ""
     echo -e "${CYAN}EXAMPLES:${NC}"
@@ -976,6 +1029,9 @@ case "${1:-}" in
         ;;
     credentials|creds)
         show_credentials
+        ;;
+    setup-token)
+        setup_influx_token "$2"
         ;;
     disable)
         disable_authentication
