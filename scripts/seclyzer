@@ -223,53 +223,146 @@ start_services() {
     
     echo ""
     
-    # Start collectors
+    # Start collectors - need sudo for keyboard/mouse
     echo "Starting collectors..."
-    if [ "$USE_SYSTEMD" = true ]; then
-        sudo systemctl start seclyzer-keyboard 2>/dev/null || true
-        sudo systemctl start seclyzer-mouse 2>/dev/null || true
-        sudo systemctl start seclyzer-app 2>/dev/null || true
-        sleep 2
-    else
-        # Manual start
-        if [ -x "$PROJECT_ROOT/scripts/start_collectors.sh" ]; then
-            "$PROJECT_ROOT/scripts/start_collectors.sh"
-        elif [ -x "/opt/seclyzer/scripts/start_collectors.sh" ]; then
-            "/opt/seclyzer/scripts/start_collectors.sh"
+    
+    # Create log directory
+    sudo mkdir -p "$LOG_DIR" 2>/dev/null || mkdir -p "$LOG_DIR" 2>/dev/null || true
+    sudo chown -R "$USER:$USER" "$LOG_DIR" 2>/dev/null || true
+    
+    # Find collector binaries
+    local kb_bin="" mouse_bin="" app_bin=""
+    for dir in "$PROJECT_ROOT/collectors" "/opt/seclyzer/bin" "/usr/local/bin"; do
+        [ -z "$kb_bin" ] && [ -x "$dir/keyboard_collector/target/release/keyboard_collector" ] && kb_bin="$dir/keyboard_collector/target/release/keyboard_collector"
+        [ -z "$kb_bin" ] && [ -x "$dir/keyboard_collector" ] && kb_bin="$dir/keyboard_collector"
+        [ -z "$mouse_bin" ] && [ -x "$dir/mouse_collector/target/release/mouse_collector" ] && mouse_bin="$dir/mouse_collector/target/release/mouse_collector"
+        [ -z "$mouse_bin" ] && [ -x "$dir/mouse_collector" ] && mouse_bin="$dir/mouse_collector"
+        [ -z "$app_bin" ] && [ -x "$dir/app_monitor/target/release/app_monitor" ] && app_bin="$dir/app_monitor/target/release/app_monitor"
+        [ -z "$app_bin" ] && [ -x "$dir/app_monitor" ] && app_bin="$dir/app_monitor"
+    done
+    
+    # Start keyboard collector (needs root)
+    if pgrep -f "keyboard_collector" > /dev/null 2>&1; then
+        echo -e "  ${YELLOW}⚠${NC} Keyboard collector already running"
+    elif [ -n "$kb_bin" ]; then
+        echo -n "  Starting keyboard collector... "
+        sudo nohup "$kb_bin" > "$LOG_DIR/keyboard_collector.log" 2>&1 &
+        sleep 1
+        if pgrep -f "keyboard_collector" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC}"
         else
-            # Try to start directly
-            local collector_dir="$PROJECT_ROOT/collectors"
-            if [ -x "$collector_dir/keyboard_collector/target/release/keyboard_collector" ]; then
-                sudo nohup "$collector_dir/keyboard_collector/target/release/keyboard_collector" > /dev/null 2>&1 &
-            fi
-            if [ -x "$collector_dir/mouse_collector/target/release/mouse_collector" ]; then
-                sudo nohup "$collector_dir/mouse_collector/target/release/mouse_collector" > /dev/null 2>&1 &
-            fi
-            if [ -x "$collector_dir/app_monitor/target/release/app_monitor" ]; then
-                nohup "$collector_dir/app_monitor/target/release/app_monitor" > /dev/null 2>&1 &
-            fi
+            echo -e "${RED}✗${NC} (check $LOG_DIR/keyboard_collector.log)"
         fi
-        sleep 2
+    else
+        echo -e "  ${RED}✗${NC} Keyboard collector binary not found"
     fi
     
-    # Check collector status
-    local collectors_running=0
-    pgrep -f "keyboard_collector" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} Keyboard collector"
-    pgrep -f "mouse_collector" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} Mouse collector"
-    pgrep -f "app_monitor" > /dev/null && ((collectors_running++)) && echo -e "  ${GREEN}✓${NC} App monitor"
+    # Start mouse collector (needs root)
+    if pgrep -f "mouse_collector" > /dev/null 2>&1; then
+        echo -e "  ${YELLOW}⚠${NC} Mouse collector already running"
+    elif [ -n "$mouse_bin" ]; then
+        echo -n "  Starting mouse collector... "
+        sudo nohup "$mouse_bin" > "$LOG_DIR/mouse_collector.log" 2>&1 &
+        sleep 1
+        if pgrep -f "mouse_collector" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC} (check $LOG_DIR/mouse_collector.log)"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Mouse collector binary not found"
+    fi
     
-    if [ $collectors_running -eq 0 ]; then
-        echo -e "  ${RED}✗${NC} No collectors running"
-        echo "  Try: sudo $PROJECT_ROOT/scripts/start_collectors.sh"
+    # Start app monitor (doesn't need root, needs DISPLAY)
+    if [ -n "$DISPLAY" ]; then
+        if pgrep -f "app_monitor" > /dev/null 2>&1; then
+            echo -e "  ${YELLOW}⚠${NC} App monitor already running"
+        elif [ -n "$app_bin" ]; then
+            echo -n "  Starting app monitor... "
+            nohup "$app_bin" > "$LOG_DIR/app_monitor.log" 2>&1 &
+            sleep 1
+            if pgrep -f "app_monitor" > /dev/null 2>&1; then
+                echo -e "${GREEN}✓${NC}"
+            else
+                echo -e "${RED}✗${NC} (check $LOG_DIR/app_monitor.log)"
+            fi
+        else
+            echo -e "  ${RED}✗${NC} App monitor binary not found"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠${NC} App monitor skipped (no DISPLAY)"
     fi
     
     echo ""
-    echo -e "${GREEN}✓${NC} SecLyzer started ($collectors_running/3 collectors)"
+    
+    # Now start extractors automatically
+    echo "Starting feature extractors..."
+    start_extractors_internal
+    
+    # Final status
+    echo ""
+    local collectors=0 extractors=0
+    pgrep -f "keyboard_collector" > /dev/null && ((collectors++))
+    pgrep -f "mouse_collector" > /dev/null && ((collectors++))
+    pgrep -f "app_monitor" > /dev/null && ((collectors++))
+    pgrep -f "keystroke_extractor.py" > /dev/null && ((extractors++))
+    pgrep -f "mouse_extractor.py" > /dev/null && ((extractors++))
+    pgrep -f "app_tracker.py" > /dev/null && ((extractors++))
+    
+    echo -e "${GREEN}✓${NC} SecLyzer started"
+    echo "  Collectors: $collectors/3"
+    echo "  Extractors: $extractors/3"
     echo ""
     echo "Next steps:"
-    echo "  seclyzer extractors    # Start feature extractors"
-    echo "  seclyzer auth          # Start authentication engine"
-    echo "  seclyzer train         # Train models (if needed)"
+    echo "  seclyzer status         # Check system status"
+    echo "  seclyzer train --check  # Check if enough data for training"
+    echo "  seclyzer credentials    # View InfluxDB web credentials"
+}
+
+# Internal function to start extractors (called by start_services)
+start_extractors_internal() {
+    # Check venv first
+    check_venv
+    
+    # Activate venv
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    # Start keystroke extractor
+    if ! pgrep -f "keystroke_extractor.py" > /dev/null; then
+        echo -n "  Starting keystroke extractor... "
+        nohup python3 "$PROJECT_ROOT/processing/extractors/keystroke_extractor.py" > "$LOG_DIR/keystroke_extractor.log" 2>&1 &
+        sleep 1
+        if pgrep -f "keystroke_extractor.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+        fi
+    fi
+    
+    # Start mouse extractor
+    if ! pgrep -f "mouse_extractor.py" > /dev/null; then
+        echo -n "  Starting mouse extractor... "
+        nohup python3 "$PROJECT_ROOT/processing/extractors/mouse_extractor.py" > "$LOG_DIR/mouse_extractor.log" 2>&1 &
+        sleep 1
+        if pgrep -f "mouse_extractor.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+        fi
+    fi
+    
+    # Start app tracker
+    if ! pgrep -f "app_tracker.py" > /dev/null; then
+        echo -n "  Starting app tracker... "
+        nohup python3 "$PROJECT_ROOT/processing/extractors/app_tracker.py" > "$LOG_DIR/app_tracker.log" 2>&1 &
+        sleep 1
+        if pgrep -f "app_tracker.py" > /dev/null; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+        fi
+    fi
 }
 
 start_extractors() {
@@ -683,6 +776,76 @@ show_version() {
     echo "  • Locking Engine (system actions - optional)"
 }
 
+show_credentials() {
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║           SecLyzer Database Credentials                ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Verify password first
+    if ! verify_seclyzer_password; then
+        echo -e "${RED}✗ Incorrect password. Access denied.${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    
+    # InfluxDB credentials
+    echo -e "${BLUE}InfluxDB Web Interface:${NC}"
+    echo "  URL: http://localhost:8086"
+    echo ""
+    
+    local cred_file="/etc/seclyzer/.credentials"
+    local token_file="/etc/seclyzer/influxdb_token"
+    
+    if [ -f "$cred_file" ]; then
+        echo "  Username: seclyzer_admin"
+        local influx_pass=$(grep "INFLUX_PASSWORD=" "$cred_file" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$influx_pass" ]; then
+            echo "  Password: $influx_pass"
+        else
+            echo "  Password: (not found in credentials file)"
+        fi
+    else
+        echo "  Username: seclyzer_admin"
+        echo "  Password: (credentials file not found at $cred_file)"
+    fi
+    
+    echo ""
+    
+    if [ -f "$token_file" ]; then
+        echo "  API Token: $(cat "$token_file")"
+    else
+        echo "  API Token: (not found at $token_file)"
+    fi
+    
+    echo ""
+    echo -e "${BLUE}Organization:${NC} seclyzer"
+    echo -e "${BLUE}Bucket:${NC} behavioral_data"
+    echo ""
+    
+    # Redis info
+    echo -e "${BLUE}Redis:${NC}"
+    echo "  Host: localhost"
+    echo "  Port: 6379"
+    echo "  (No authentication by default)"
+    echo ""
+    
+    # Check if services are running
+    echo -e "${BLUE}Service Status:${NC}"
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        echo -e "  InfluxDB: ${GREEN}Running${NC}"
+    else
+        echo -e "  InfluxDB: ${RED}Not running${NC}"
+    fi
+    
+    if redis-cli ping > /dev/null 2>&1; then
+        echo -e "  Redis: ${GREEN}Running${NC}"
+    else
+        echo -e "  Redis: ${RED}Not running${NC}"
+    fi
+}
+
 show_resources() {
     echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║      SecLyzer Resource Usage                      ║${NC}"
@@ -728,13 +891,9 @@ show_help() {
     echo "Usage: seclyzer <command> [options]"
     echo ""
     echo -e "${CYAN}SERVICE MANAGEMENT:${NC}"
-    echo "  start           Start databases and collectors"
-    echo "  extractors      Start feature extractors"
-    echo "  auth            Start authentication engine (inference + decision)"
-    echo "  restart         Restart all services"
-    echo "  stop-extractors Stop feature extractors"
-    echo "  stop-auth       Stop authentication engine"
+    echo "  start           Start databases, collectors, and extractors"
     echo "  stop-all        Stop ALL SecLyzer services"
+    echo "  restart         Restart all services"
     echo "  status          Show status of all components"
     echo "  resources       Show resource usage"
     echo ""
@@ -750,29 +909,30 @@ show_help() {
     echo -e "${CYAN}AUTHENTICATION CONTROL:${NC}"
     echo "  auth                Start authentication (inference + decision + locking)"
     echo "  auth --no-locking   Start without locking (scores only, for debugging)"
+    echo "  stop-auth           Stop authentication engine"
     echo "  disable             Disable authentication (developer mode)"
     echo "  enable              Re-enable authentication"
     echo "  reload              Hot-reload trained models"
     echo ""
-    echo -e "${CYAN}MONITORING:${NC}"
+    echo -e "${CYAN}MONITORING & INFO:${NC}"
     echo "  logs [component]    View logs (all, auth, keystroke, mouse, app)"
+    echo "  credentials         Show InfluxDB web interface credentials"
     echo "  version             Show version information"
     echo ""
     echo -e "${CYAN}EXAMPLES:${NC}"
-    echo "  seclyzer start              # Start collectors and databases"
-    echo "  seclyzer extractors         # Start feature extraction"
+    echo "  seclyzer start              # Start all data collection"
     echo "  seclyzer train --check      # Check if enough data for training"
     echo "  seclyzer train --all        # Train all models"
     echo "  seclyzer auth               # Start authentication"
     echo "  seclyzer status             # Check system status"
+    echo "  seclyzer credentials        # View database credentials"
     echo "  seclyzer logs auth          # View authentication logs"
     echo ""
     echo -e "${CYAN}TYPICAL WORKFLOW:${NC}"
-    echo "  1. seclyzer start           # Start data collection"
-    echo "  2. seclyzer extractors      # Start feature extraction"
-    echo "  3. (wait 1-2 weeks for data collection)"
-    echo "  4. seclyzer train --all     # Train models"
-    echo "  5. seclyzer auth            # Enable authentication"
+    echo "  1. seclyzer start           # Start data collection + extraction"
+    echo "  2. (wait 1-2 weeks for data collection)"
+    echo "  3. seclyzer train --all     # Train models"
+    echo "  4. seclyzer auth            # Enable authentication"
 }
 
 # Main logic
@@ -781,6 +941,7 @@ case "${1:-}" in
         start_services
         ;;
     extractors)
+        # Keep for backward compatibility, but start does this now
         start_extractors
         ;;
     auth)
@@ -812,6 +973,9 @@ case "${1:-}" in
         ;;
     check-data)
         check_training_data
+        ;;
+    credentials|creds)
+        show_credentials
         ;;
     disable)
         disable_authentication
