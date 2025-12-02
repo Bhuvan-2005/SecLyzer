@@ -17,8 +17,8 @@ import joblib
 import numpy as np
 import redis
 
-from common.logger import get_logger
 from common.developer_mode import get_developer_mode
+from common.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 class InferenceEngine:
     """
     Real-time inference engine for behavioral biometric authentication.
-    
+
     Loads trained models and scores incoming features from extractors.
     Publishes confidence scores for the decision engine.
     """
@@ -139,9 +139,7 @@ class InferenceEngine:
             self.mouse_scaler = model_data.get("scaler")
             self.mouse_feature_names = model_data.get("feature_names", [])
 
-            logger.info(
-                f"Mouse model loaded: {len(self.mouse_feature_names)} features"
-            )
+            logger.info(f"Mouse model loaded: {len(self.mouse_feature_names)} features")
 
         except Exception as e:
             logger.error(f"Failed to load mouse model: {e}")
@@ -193,8 +191,10 @@ class InferenceEngine:
             else:
                 # Fallback: use all numeric features
                 feature_vector = [
-                    float(v) for k, v in features.items()
-                    if isinstance(v, (int, float)) and k not in ["dev_mode", "timestamp", "type"]
+                    float(v)
+                    for k, v in features.items()
+                    if isinstance(v, (int, float))
+                    and k not in ["dev_mode", "timestamp", "type"]
                 ]
 
             if not feature_vector:
@@ -244,8 +244,10 @@ class InferenceEngine:
             else:
                 # Fallback: use all numeric features
                 feature_vector = [
-                    float(v) for k, v in features.items()
-                    if isinstance(v, (int, float)) and k not in ["dev_mode", "timestamp", "type"]
+                    float(v)
+                    for k, v in features.items()
+                    if isinstance(v, (int, float))
+                    and k not in ["dev_mode", "timestamp", "type"]
                 ]
 
             if not feature_vector:
@@ -334,6 +336,7 @@ class InferenceEngine:
         Returns:
             Dictionary with smoothed scores
         """
+
         def smooth(scores: deque, alpha: float = 0.3) -> float:
             if not scores:
                 return 50.0
@@ -426,7 +429,9 @@ class InferenceEngine:
                     current_hour = datetime.now().hour
 
                     if from_app and to_app:
-                        score = self.score_app_transition(from_app, to_app, current_hour)
+                        score = self.score_app_transition(
+                            from_app, to_app, current_hour
+                        )
                         self._publish_score("app", score, is_dev_mode)
                         last_app = to_app
 

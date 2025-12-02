@@ -18,11 +18,11 @@ project_root = Path(__file__).resolve().parents[1]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from common.logger import get_logger
 from common.developer_mode import get_developer_mode
-from processing.inference.inference_engine import InferenceEngine
-from processing.decision.decision_engine import DecisionEngine
+from common.logger import get_logger
 from processing.actions.locking_engine import LockingEngine
+from processing.decision.decision_engine import DecisionEngine
+from processing.inference.inference_engine import InferenceEngine
 
 logger = get_logger(__name__)
 

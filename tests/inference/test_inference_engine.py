@@ -33,8 +33,13 @@ def mock_redis():
 @pytest.fixture
 def engine(temp_models_dir, mock_redis):
     """Create inference engine with mocked dependencies"""
-    with patch("processing.inference.inference_engine.redis.Redis", return_value=mock_redis):
-        with patch("processing.inference.inference_engine.get_developer_mode", return_value=None):
+    with patch(
+        "processing.inference.inference_engine.redis.Redis", return_value=mock_redis
+    ):
+        with patch(
+            "processing.inference.inference_engine.get_developer_mode",
+            return_value=None,
+        ):
             engine = InferenceEngine(models_dir=temp_models_dir, user_id="test")
             engine.redis_client = mock_redis
             return engine
@@ -123,10 +128,10 @@ class TestMouseScoring:
         mock_model = MagicMock()
         mock_model.predict.return_value = np.array([1])  # Normal
         mock_model.decision_function.return_value = np.array([2.0])  # Positive = normal
-        
+
         mock_scaler = MagicMock()
         mock_scaler.transform.return_value = np.array([[0.5, 0.5]])
-        
+
         engine.mouse_model = mock_model
         engine.mouse_scaler = mock_scaler
         engine.mouse_feature_names = ["feat1", "feat2"]
@@ -141,8 +146,10 @@ class TestMouseScoring:
         """Test anomaly detection scoring"""
         mock_model = MagicMock()
         mock_model.predict.return_value = np.array([-1])  # Anomaly
-        mock_model.decision_function.return_value = np.array([-2.0])  # Negative = anomaly
-        
+        mock_model.decision_function.return_value = np.array(
+            [-2.0]
+        )  # Negative = anomaly
+
         engine.mouse_model = mock_model
         engine.mouse_scaler = None
         engine.mouse_feature_names = ["feat1"]
@@ -165,18 +172,10 @@ class TestAppScoring:
     def test_score_with_known_transition(self, engine):
         """Test scoring with known transition"""
         engine.app_model = {
-            "markov_chain": {
-                "transitions": {
-                    "firefox->chrome": {"probability": 0.5}
-                }
-            },
+            "markov_chain": {"transitions": {"firefox->chrome": {"probability": 0.5}}},
             "time_patterns": {
-                "chrome": {
-                    "hourly_distribution": {
-                        "14": {"probability": 0.1}
-                    }
-                }
-            }
+                "chrome": {"hourly_distribution": {"14": {"probability": 0.1}}}
+            },
         }
 
         score = engine.score_app_transition("firefox", "chrome", 14)
@@ -185,10 +184,7 @@ class TestAppScoring:
 
     def test_score_unknown_transition(self, engine):
         """Test scoring with unknown transition"""
-        engine.app_model = {
-            "markov_chain": {"transitions": {}},
-            "time_patterns": {}
-        }
+        engine.app_model = {"markov_chain": {"transitions": {}}, "time_patterns": {}}
 
         score = engine.score_app_transition("unknown1", "unknown2", 12)
         assert 0 <= score <= 100
@@ -200,7 +196,7 @@ class TestScoreSmoothing:
     def test_get_smoothed_scores_empty(self, engine):
         """Test smoothed scores with no history"""
         smoothed = engine.get_smoothed_scores()
-        
+
         assert smoothed["keystroke"] == 50.0
         assert smoothed["mouse"] == 50.0
         assert smoothed["app"] == 50.0
@@ -277,7 +273,7 @@ class TestPublishing:
         mock_redis.publish.assert_called_once()
         call_args = mock_redis.publish.call_args
         assert call_args[0][0] == "seclyzer:scores:keystroke"
-        
+
         data = json.loads(call_args[0][1])
         assert data["modality"] == "keystroke"
         assert data["score"] == 85.0
@@ -294,7 +290,7 @@ class TestPublishing:
         mock_redis.publish.assert_called_once()
         call_args = mock_redis.publish.call_args
         assert call_args[0][0] == "seclyzer:scores:fused"
-        
+
         data = json.loads(call_args[0][1])
         assert "fused_score" in data
         assert "keystroke_score" in data
@@ -309,7 +305,7 @@ class TestEngineControl:
         """Test stopping the engine"""
         engine._running = True
         engine.stop()
-        
+
         assert engine._running is False
         engine.pubsub.unsubscribe.assert_called_once()
 

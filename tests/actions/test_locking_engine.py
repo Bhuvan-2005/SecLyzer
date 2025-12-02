@@ -21,8 +21,12 @@ def mock_redis():
 @pytest.fixture
 def engine(mock_redis):
     """Create locking engine with mocked dependencies"""
-    with patch("processing.actions.locking_engine.redis.Redis", return_value=mock_redis):
-        with patch("processing.actions.locking_engine.get_developer_mode", return_value=None):
+    with patch(
+        "processing.actions.locking_engine.redis.Redis", return_value=mock_redis
+    ):
+        with patch(
+            "processing.actions.locking_engine.get_developer_mode", return_value=None
+        ):
             engine = LockingEngine(
                 enable_lock=True,
                 enable_notifications=True,

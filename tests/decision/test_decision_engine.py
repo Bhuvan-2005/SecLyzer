@@ -30,9 +30,16 @@ def mock_db():
 @pytest.fixture
 def engine(mock_redis, mock_db):
     """Create decision engine with mocked dependencies"""
-    with patch("processing.decision.decision_engine.redis.Redis", return_value=mock_redis):
-        with patch("processing.decision.decision_engine.get_database", return_value=mock_db):
-            with patch("processing.decision.decision_engine.get_developer_mode", return_value=None):
+    with patch(
+        "processing.decision.decision_engine.redis.Redis", return_value=mock_redis
+    ):
+        with patch(
+            "processing.decision.decision_engine.get_database", return_value=mock_db
+        ):
+            with patch(
+                "processing.decision.decision_engine.get_developer_mode",
+                return_value=None,
+            ):
                 engine = DecisionEngine(
                     normal_threshold=70.0,
                     monitoring_threshold=50.0,
@@ -190,7 +197,10 @@ class TestStateTransitions:
         # High score should immediately improve
         result = engine.process_score(90.0)
         # State should improve (could be NORMAL or at least better than RESTRICTED)
-        assert engine.current_state.value >= AuthState.RESTRICTED.value or engine.current_state == AuthState.NORMAL
+        assert (
+            engine.current_state.value >= AuthState.RESTRICTED.value
+            or engine.current_state == AuthState.NORMAL
+        )
 
     def test_state_callback_called(self, engine):
         """Test state change callbacks are called"""
@@ -276,7 +286,8 @@ class TestPublishing:
 
         # Check publish was called
         publish_calls = [
-            call for call in mock_redis.publish.call_args_list
+            call
+            for call in mock_redis.publish.call_args_list
             if call[0][0] == "seclyzer:state_change"
         ]
         assert len(publish_calls) > 0
@@ -330,11 +341,7 @@ class TestStateCallbacks:
         received_data = []
 
         def callback(old_state, new_state, score):
-            received_data.append({
-                "old": old_state,
-                "new": new_state,
-                "score": score
-            })
+            received_data.append({"old": old_state, "new": new_state, "score": score})
 
         engine.add_state_callback(callback)
 

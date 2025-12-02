@@ -14,8 +14,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import redis
 
-from common.logger import get_logger
 from common.developer_mode import get_developer_mode
+from common.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class LockingEngine:
     """
     Locking engine for system actions.
-    
+
     Listens to decision engine state changes and executes
     appropriate system actions (lock screen, notifications).
     Can be enabled/disabled independently of decision engine.
@@ -118,7 +118,7 @@ class LockingEngine:
     def lock_screen(self) -> bool:
         """
         Lock the screen.
-        
+
         Returns:
             True if lock was successful
         """
@@ -151,21 +151,17 @@ class LockingEngine:
         return False
 
     def send_notification(
-        self, 
-        title: str, 
-        message: str, 
-        urgency: str = "normal",
-        icon: str = None
+        self, title: str, message: str, urgency: str = "normal", icon: str = None
     ) -> bool:
         """
         Send desktop notification.
-        
+
         Args:
             title: Notification title
             message: Notification body
             urgency: low, normal, or critical
             icon: Icon name (optional)
-            
+
         Returns:
             True if notification was sent
         """
@@ -196,7 +192,7 @@ class LockingEngine:
     def handle_state_change(self, old_state: str, new_state: str, score: float):
         """
         Handle a state change from decision engine.
-        
+
         Args:
             old_state: Previous authentication state
             new_state: New authentication state
@@ -208,7 +204,9 @@ class LockingEngine:
 
         # Check developer mode
         if self.dev_mode and self.dev_mode.is_active():
-            logger.debug(f"State change {old_state} -> {new_state} (dev mode - no action)")
+            logger.debug(
+                f"State change {old_state} -> {new_state} (dev mode - no action)"
+            )
             return
 
         logger.info(f"Handling state change: {old_state} -> {new_state}")

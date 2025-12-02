@@ -223,9 +223,9 @@ class AppUsageModelTrainer:
             patterns[app] = {
                 "hourly_distribution": hour_probs,
                 "total_occurrences": total_occurrences,
-                "peak_hour": max(hour_counts, key=hour_counts.get)
-                if hour_counts
-                else 0,
+                "peak_hour": (
+                    max(hour_counts, key=hour_counts.get) if hour_counts else 0
+                ),
             }
 
         print(f"\n⏰ Time Pattern Statistics:")

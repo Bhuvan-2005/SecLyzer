@@ -17,8 +17,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import redis
 
-from common.logger import get_logger
 from common.developer_mode import get_developer_mode
+from common.logger import get_logger
 from storage.database import get_database
 
 logger = get_logger(__name__)
@@ -26,16 +26,17 @@ logger = get_logger(__name__)
 
 class AuthState(Enum):
     """Authentication states."""
-    NORMAL = "normal"           # Full access, high confidence
-    MONITORING = "monitoring"   # Logging events, medium confidence
-    RESTRICTED = "restricted"   # Limited access, low confidence
-    LOCKDOWN = "lockdown"       # Screen locked, very low confidence
+
+    NORMAL = "normal"  # Full access, high confidence
+    MONITORING = "monitoring"  # Logging events, medium confidence
+    RESTRICTED = "restricted"  # Limited access, low confidence
+    LOCKDOWN = "lockdown"  # Screen locked, very low confidence
 
 
 class DecisionEngine:
     """
     Decision engine for behavioral biometric authentication.
-    
+
     Receives confidence scores from inference engine and makes
     authentication decisions (allow, restrict, lockdown).
     """
@@ -188,9 +189,11 @@ class DecisionEngine:
             "reason": self._get_reason(self.current_state, score),
             "dev_mode": False,
             "low_score_count": self.low_score_count,
-            "confirmation_needed": self.confirmation_count - self.low_score_count
-            if self.low_score_count < self.confirmation_count
-            else 0,
+            "confirmation_needed": (
+                self.confirmation_count - self.low_score_count
+                if self.low_score_count < self.confirmation_count
+                else 0
+            ),
         }
 
         # Log to database
@@ -258,11 +261,13 @@ class DecisionEngine:
                 event_type="DECISION",
                 confidence_score=decision["score"],
                 state=decision["state"],
-                details=json.dumps({
-                    "action": decision["action"],
-                    "reason": decision["reason"],
-                    "dev_mode": decision["dev_mode"],
-                }),
+                details=json.dumps(
+                    {
+                        "action": decision["action"],
+                        "reason": decision["reason"],
+                        "dev_mode": decision["dev_mode"],
+                    }
+                ),
             )
         except Exception as e:
             logger.debug(f"Failed to log decision: {e}")

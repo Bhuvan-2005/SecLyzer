@@ -19,16 +19,10 @@ import onnx
 import polars as pl
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score,
-    precision_recall_curve,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import (accuracy_score, classification_report,
+                             confusion_matrix, f1_score,
+                             precision_recall_curve, precision_score,
+                             recall_score, roc_auc_score)
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import OneClassSVM
 

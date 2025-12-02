@@ -20,14 +20,9 @@ import polars as pl
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score,
-    precision_score,
-    recall_score,
-)
+from sklearn.metrics import (accuracy_score, classification_report,
+                             confusion_matrix, f1_score, precision_score,
+                             recall_score)
 from sklearn.model_selection import train_test_split
 
 from common.config import get_config
