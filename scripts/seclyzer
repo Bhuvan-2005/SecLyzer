@@ -272,7 +272,7 @@ start_auth_engine() {
     fi
     
     mkdir -p "$LOG_DIR"
-    source "$VENV_PATH/bin/activate"
+    source "$(VENV_PATH)/venv/bin/activate"
     export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
     
     local daemon_args=""
