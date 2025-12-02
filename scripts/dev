@@ -15,8 +15,32 @@ NC='\033[0m'
 
 # Paths
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_PATH="${VENV_PATH:-$HOME/Documents/Projects/venv}"
 LOG_DIR="/var/log/seclyzer"
+
+# Auto-detect virtual environment
+detect_venv() {
+    local user_home="${HOME:-$(getent passwd "$USER" | cut -d: -f6)}"
+    local paths=(
+        "$VENV_PATH"
+        "$user_home/.seclyzer-venv"
+        "$user_home/.venv"
+        "$user_home/venv"
+        "$user_home/Documents/Projects/venv"
+        "/opt/seclyzer/venv"
+    )
+    
+    for p in "${paths[@]}"; do
+        if [ -n "$p" ] && [ -f "$p/bin/activate" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    
+    # Fallback
+    echo "$user_home/.seclyzer-venv"
+}
+
+VENV_PATH=$(detect_venv)
 
 show_banner() {
     echo -e "${CYAN}"

@@ -52,7 +52,7 @@ Every time you reboot, you MUST manually start both collectors and extractors:
 
 **2. Run Tests:** Verify system integrity anytime:
    ```bash
-   source /home/bhuvan/Documents/Projects/venv/bin/activate
+   source ~/.seclyzer-venv/bin/activate
    export PYTHONPATH=$PYTHONPATH:.
    pytest tests/
    ```
@@ -157,10 +157,10 @@ Every time you reboot, you MUST manually start both collectors and extractors:
 ## 4. FILE & ENVIRONMENT MANAGEMENT
 
 ### 1. Virtual Environment (CRITICAL)
--   **Path:** `/home/bhuvan/Documents/Projects/venv`
+-   **Path:** `~/.seclyzer-venv`
 -   **Activation Rule:** You **MUST** activate the venv before running ANY Python script.
     ```bash
-    source /home/bhuvan/Documents/Projects/venv/bin/activate
+    source ~/.seclyzer-venv/bin/activate
     ```
 -   **Dependency Management:**
     -   Core deps: `requirements.txt`
@@ -181,7 +181,7 @@ Every time you reboot, you MUST manually start both collectors and extractors:
     -   **Action:** Do NOT re-run these setup scripts unless you are deliberately resetting the environment.
 
 ### 3. Key File Locations
--   **Source Code:** `/home/bhuvan/Documents/Projects/SecLyzer/`
+-   **Source Code:** `~/SecLyzer/`
 -   **Installed Location:** `/opt/seclyzer/`
 -   **Data:** `/var/lib/seclyzer/`
 -   **Logs:** `/var/log/seclyzer/`
@@ -241,7 +241,7 @@ All training scripts implemented in `processing/models/`:
 -   **Logs:** Check `/var/log/seclyzer/*.log`.
 -   **Manual Run:**
     ```bash
-    export PYTHONPATH=/home/bhuvan/Documents/Projects/SecLyzer
+    export PYTHONPATH=~/SecLyzer
     python3 path/to/script.py
     ```
 

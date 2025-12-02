@@ -10,7 +10,7 @@
 ### InfluxDB Setup
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 sudo ./scripts/setup_influxdb.sh
 ```
 
@@ -30,7 +30,7 @@ sqlite3 /var/lib/seclyzer/databases/seclyzer.db "SELECT * FROM user_profile;"
 ## Step 2: Install Python Dependencies
 
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
+source ~/.seclyzer-venv/bin/activate
 pip install polars influxdb-client pyyaml numpy
 ```
 
@@ -38,8 +38,8 @@ pip install polars influxdb-client pyyaml numpy
 
 ### Terminal 1: Keystroke Extractor
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
-cd /home/bhuvan/Documents/Projects/SecLyzer
+source ~/.seclyzer-venv/bin/activate
+cd ~/SecLyzer
 python3 processing/extractors/keystroke_extractor.py
 ```
 
@@ -51,15 +51,15 @@ Expected output:
 
 ### Terminal 2: Mouse Extractor
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
-cd /home/bhuvan/Documents/Projects/SecLyzer
+source ~/.seclyzer-venv/bin/activate
+cd ~/SecLyzer
 python3 processing/extractors/mouse_extractor.py
 ```
 
 ### Terminal 3: App Tracker
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
-cd /home/bhuvan/Documents/Projects/SecLyzer
+source ~/.seclyzer-venv/bin/activate
+cd ~/SecLyzer
 python3 processing/extractors/app_tracker.py
 ```
 
@@ -206,7 +206,7 @@ sudo systemctl start redis-server
 
 Make sure you're in venv:
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
+source ~/.seclyzer-venv/bin/activate
 pip install -r requirements.txt  # If we create one
 ```
 

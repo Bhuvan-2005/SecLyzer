@@ -197,7 +197,7 @@ collectors/app_monitor/target/release/app_monitor
 ### Start Feature Extractors
 
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
+source ~/.seclyzer-venv/bin/activate
 
 # Terminal 4
 python3 processing/extractors/keystroke_extractor.py

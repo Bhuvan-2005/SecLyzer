@@ -8,7 +8,7 @@ Before testing, ensure:
 ## Step 1: Setup Redis
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 ./scripts/setup_redis.sh
 ```
 
@@ -51,7 +51,7 @@ cargo build --release
 First, ensure the Python Redis library is installed:
 
 ```bash
-source /home/bhuvan/Documents/Projects/venv/bin/activate
+source ~/.seclyzer-venv/bin/activate
 pip install redis
 ```
 
@@ -81,7 +81,7 @@ Leave this running - it will show events as they arrive.
 Open a NEW terminal and run:
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 sudo collectors/keyboard_collector/target/release/keyboard_collector
 ```
 
@@ -109,7 +109,7 @@ sudo collectors/keyboard_collector/target/release/keyboard_collector
 Open ANOTHER terminal:
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 sudo collectors/mouse_collector/target/release/mouse_collector
 ```
 
@@ -135,7 +135,7 @@ sudo collectors/mouse_collector/target/release/mouse_collector
 Open ANOTHER terminal:
 
 ```bash
-cd /home/bhuvan/Documents/Projects/SecLyzer
+cd ~/SecLyzer
 collectors/app_monitor/target/release/app_monitor
 ```
 
