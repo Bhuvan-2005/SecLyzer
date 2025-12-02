@@ -156,7 +156,7 @@ class TimeSeriesDB:
         """Query keystroke features in time range"""
         query = f"""
             from(bucket: "{self.bucket}")
-            |> range(start: {start_time.isoformat()}Z, stop: {end_time.isoformat()}Z)
+            |> range(start: {start_time.isoformat()}, stop: {end_time.isoformat()})
             |> filter(fn: (r) => r["_measurement"] == "keystroke_features")
             |> filter(fn: (r) => r["user_id"] == "{user_id}")
         """
@@ -170,7 +170,7 @@ class TimeSeriesDB:
         """Query mouse features in time range"""
         query = f"""
             from(bucket: "{self.bucket}")
-            |> range(start: {start_time.isoformat()}Z, stop: {end_time.isoformat()}Z)
+            |> range(start: {start_time.isoformat()}, stop: {end_time.isoformat()})
             |> filter(fn: (r) => r["_measurement"] == "mouse_features")
             |> filter(fn: (r) => r["user_id"] == "{user_id}")
         """
@@ -187,7 +187,7 @@ class TimeSeriesDB:
 
         query = f"""
             from(bucket: "{self.bucket}")
-            |> range(start: {start_time.isoformat()}Z)
+            |> range(start: {start_time.isoformat()})
             |> filter(fn: (r) => r["_measurement"] == "{measurement}")
             |> filter(fn: (r) => r["user_id"] == "{user_id}")
         """

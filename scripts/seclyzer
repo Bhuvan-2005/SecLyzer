@@ -1,6 +1,6 @@
 #!/bin/bash
 # SecLyzer Control Script
-# Simple on/off switch for all SecLyzer services
+# Complete control interface for SecLyzer behavioral authentication system
 
 set -e
 
@@ -8,13 +8,18 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Configuration
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_PATH="${VENV_PATH:-/home/$USER/Documents/Projects/venv}"
 INSTALL_DIR="/opt/seclyzer"
+LOG_DIR="/var/log/seclyzer"
 USE_SYSTEMD=false
 
 # Check if systemd services exist
-if systemctl list-units --all | grep -q "seclyzer-"; then
+if systemctl list-units --all 2>/dev/null | grep -q "seclyzer-"; then
     USE_SYSTEMD=true
 fi
 
@@ -23,100 +28,126 @@ verify_seclyzer_password() {
     local password_file="/etc/seclyzer/.password_hash"
     
     if [ ! -f "$password_file" ]; then
-        echo -e "${YELLOW}⚠ Password not set during installation${NC}"
         return 0  # Allow if no password set
     fi
     
     local stored_hash=$(cat "$password_file")
-    
-    # Prompt for password
     read -s -p "Enter SecLyzer password: " entered_password
     echo ""
     
-    # Hash entered password
     local entered_hash=$(echo -n "$entered_password" | sha256sum | cut -d' ' -f1)
     
-    # Compare hashes
     if [ "$entered_hash" == "$stored_hash" ]; then
-        return 0  # Success
+        return 0
     else
-        return 1  # Failure
+        return 1
     fi
 }
 
+show_banner() {
+    echo -e "${BLUE}"
+    echo "╔════════════════════════════════════════════════════════╗"
+    echo "║           SecLyzer Control Interface                   ║"
+    echo "║    Behavioral Biometric Authentication System          ║"
+    echo "╚════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
 show_status() {
-    echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║         SecLyzer Status                           ║${NC}"
-    echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
+    show_banner
+    echo -e "${CYAN}System Status:${NC}"
     echo ""
     
-    if [ "$USE_SYSTEMD" = true ]; then
-        echo "Mode: Systemd Services"
-        echo ""
-        systemctl status seclyzer-keyboard --no-pager -l || true
-        echo ""
-        systemctl status seclyzer-mouse --no-pager -l || true
-        echo ""
-        systemctl status seclyzer-app --no-pager -l || true
+    # Collectors
+    echo "Rust Collectors:"
+    if pgrep -f "keyboard_collector" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Keyboard Collector"
     else
-        echo "Mode: Manual (no systemd)"
-        echo ""
-        echo "Checking processes..."
-        
-        if pgrep -f "keyboard_collector" > /dev/null; then
-            echo -e "  Keyboard Collector: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  Keyboard Collector: ${RED}STOPPED${NC}"
-        fi
-        
-        if pgrep -f "mouse_collector" > /dev/null; then
-            echo -e "  Mouse Collector: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  Mouse Collector: ${RED}STOPPED${NC}"
-        fi
-        
-        if pgrep -f "app_monitor" > /dev/null; then
-            echo -e "  App Monitor: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  App Monitor: ${RED}STOPPED${NC}"
-        fi
-        
-        echo ""
-        echo "Feature Extractors (Python):"
-        
-        if pgrep -f "keystroke_extractor.py" > /dev/null; then
-            echo -e "  Keystroke Extractor: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  Keystroke Extractor: ${RED}STOPPED${NC}"
-        fi
-        
-        if pgrep -f "mouse_extractor.py" > /dev/null; then
-            echo -e "  Mouse Extractor: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  Mouse Extractor: ${RED}STOPPED${NC}"
-        fi
-        
-        if pgrep -f "app_tracker.py" > /dev/null; then
-            echo -e "  App Tracker: ${GREEN}RUNNING${NC}"
-        else
-            echo -e "  App Tracker: ${RED}STOPPED${NC}"
-        fi
+        echo -e "  ${RED}✗${NC} Keyboard Collector"
+    fi
+    
+    if pgrep -f "mouse_collector" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Mouse Collector"
+    else
+        echo -e "  ${RED}✗${NC} Mouse Collector"
+    fi
+    
+    if pgrep -f "app_monitor" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} App Monitor"
+    else
+        echo -e "  ${RED}✗${NC} App Monitor"
     fi
     
     echo ""
+    echo "Python Extractors:"
+    if pgrep -f "keystroke_extractor.py" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Keystroke Extractor"
+    else
+        echo -e "  ${RED}✗${NC} Keystroke Extractor"
+    fi
     
-    # Check Redis
+    if pgrep -f "mouse_extractor.py" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Mouse Extractor"
+    else
+        echo -e "  ${RED}✗${NC} Mouse Extractor"
+    fi
+    
+    if pgrep -f "app_tracker.py" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} App Tracker"
+    else
+        echo -e "  ${RED}✗${NC} App Tracker"
+    fi
+    
+    echo ""
+    echo "Authentication Engine:"
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Inference + Decision Engine"
+    else
+        echo -e "  ${RED}✗${NC} Inference + Decision Engine"
+    fi
+    
+    echo ""
+    echo "Databases:"
     if redis-cli ping > /dev/null 2>&1; then
-        echo -e "Redis: ${GREEN}RUNNING${NC}"
+        echo -e "  ${GREEN}✓${NC} Redis"
     else
-        echo -e "Redis: ${RED}STOPPED${NC}"
+        echo -e "  ${RED}✗${NC} Redis"
     fi
     
-    # Check InfluxDB
     if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
-        echo -e "InfluxDB: ${GREEN}RUNNING${NC}"
+        echo -e "  ${GREEN}✓${NC} InfluxDB"
     else
-        echo -e "InfluxDB: ${RED}STOPPED${NC}"
+        echo -e "  ${RED}✗${NC} InfluxDB"
+    fi
+    
+    echo ""
+    echo "Developer Mode:"
+    if [ -f "/tmp/.seclyzer_dev_mode" ]; then
+        echo -e "  ${YELLOW}⚠ ACTIVE${NC} (authentication bypassed)"
+    else
+        echo -e "  ${GREEN}✓${NC} Disabled (normal operation)"
+    fi
+    
+    echo ""
+    
+    # Check for trained models
+    echo "Trained Models:"
+    if ls "$PROJECT_ROOT/data/models/keystroke_rf_"*.pkl > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Keystroke Model"
+    else
+        echo -e "  ${RED}✗${NC} Keystroke Model (not trained)"
+    fi
+    
+    if ls "$PROJECT_ROOT/data/models/mouse_svm_"*.pkl > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} Mouse Model"
+    else
+        echo -e "  ${RED}✗${NC} Mouse Model (not trained)"
+    fi
+    
+    if ls "$PROJECT_ROOT/data/models/app_markov_"*.json > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} App Usage Model"
+    else
+        echo -e "  ${RED}✗${NC} App Usage Model (not trained)"
     fi
 }
 
@@ -129,250 +160,495 @@ start_services() {
         echo "Starting Redis..."
         sudo systemctl start redis-server
     fi
+    echo -e "${GREEN}✓${NC} Redis running"
     
     # Start InfluxDB if not running
     if ! curl -s http://localhost:8086/ping > /dev/null 2>&1; then
         echo "Starting InfluxDB..."
         sudo systemctl start influxdb
     fi
+    echo -e "${GREEN}✓${NC} InfluxDB running"
     
+    # Start collectors
     if [ "$USE_SYSTEMD" = true ]; then
-        echo "Starting collectors..."
-        sudo systemctl start seclyzer-keyboard
-        sudo systemctl start seclyzer-mouse
-        sudo systemctl start seclyzer-app
-        echo -e "${GREEN}✓${NC} Collectors started via systemd"
+        sudo systemctl start seclyzer-keyboard 2>/dev/null || true
+        sudo systemctl start seclyzer-mouse 2>/dev/null || true
+        sudo systemctl start seclyzer-app 2>/dev/null || true
+        echo -e "${GREEN}✓${NC} Collectors started (systemd)"
     else
-        echo -e "${YELLOW}⚠${NC} Systemd services not installed"
-        echo "Please start collectors manually or run install.sh with systemd enabled"
+        "$PROJECT_ROOT/scripts/start_collectors.sh" 2>/dev/null || true
+        echo -e "${GREEN}✓${NC} Collectors started (manual)"
     fi
     
     echo ""
     echo -e "${GREEN}✓${NC} SecLyzer started"
     echo ""
-    echo "To start feature extractors (Phase 2+):"
-    echo "  cd /home/bhuvan/Documents/Projects/SecLyzer"
-    echo "  source /home/bhuvan/Documents/Projects/venv/bin/activate"
-    echo "  python3 processing/extractors/keystroke_extractor.py &"
-    echo "  python3 processing/extractors/mouse_extractor.py &"
-    echo "  python3 processing/extractors/app_tracker.py &"
+    echo "Next steps:"
+    echo "  seclyzer extractors    # Start feature extractors"
+    echo "  seclyzer auth          # Start authentication engine"
+    echo "  seclyzer train         # Train models (if needed)"
+}
+
+start_extractors() {
+    echo -e "${GREEN}Starting Feature Extractors...${NC}"
+    echo ""
+    
+    mkdir -p "$LOG_DIR"
+    
+    # Check if already running
+    if pgrep -f "keystroke_extractor.py" > /dev/null; then
+        echo -e "${YELLOW}⚠${NC} Keystroke extractor already running"
+    else
+        source "$VENV_PATH/bin/activate"
+        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        nohup python3 "$PROJECT_ROOT/processing/extractors/keystroke_extractor.py" > "$LOG_DIR/keystroke_extractor.log" 2>&1 &
+        echo -e "${GREEN}✓${NC} Keystroke extractor started"
+    fi
+    
+    if pgrep -f "mouse_extractor.py" > /dev/null; then
+        echo -e "${YELLOW}⚠${NC} Mouse extractor already running"
+    else
+        source "$VENV_PATH/bin/activate"
+        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        nohup python3 "$PROJECT_ROOT/processing/extractors/mouse_extractor.py" > "$LOG_DIR/mouse_extractor.log" 2>&1 &
+        echo -e "${GREEN}✓${NC} Mouse extractor started"
+    fi
+    
+    if pgrep -f "app_tracker.py" > /dev/null; then
+        echo -e "${YELLOW}⚠${NC} App tracker already running"
+    else
+        source "$VENV_PATH/bin/activate"
+        export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+        nohup python3 "$PROJECT_ROOT/processing/extractors/app_tracker.py" > "$LOG_DIR/app_tracker.log" 2>&1 &
+        echo -e "${GREEN}✓${NC} App tracker started"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}✓${NC} Feature extractors started"
+}
+
+stop_extractors() {
+    echo -e "${YELLOW}Stopping Feature Extractors...${NC}"
+    
+    pkill -f "keystroke_extractor.py" 2>/dev/null && echo -e "${GREEN}✓${NC} Keystroke extractor stopped" || true
+    pkill -f "mouse_extractor.py" 2>/dev/null && echo -e "${GREEN}✓${NC} Mouse extractor stopped" || true
+    pkill -f "app_tracker.py" 2>/dev/null && echo -e "${GREEN}✓${NC} App tracker stopped" || true
+    
+    echo -e "${GREEN}✓${NC} Feature extractors stopped"
+}
+
+start_auth_engine() {
+    local no_locking=false
+    
+    # Parse arguments
+    shift 2>/dev/null || true  # Remove 'auth' from args
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --no-locking|--scores-only)
+                no_locking=true
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    echo -e "${GREEN}Starting Authentication Engine...${NC}"
+    echo ""
+    
+    # Check for trained models
+    if ! ls "$PROJECT_ROOT/data/models/keystroke_rf_"*.pkl > /dev/null 2>&1; then
+        echo -e "${RED}✗ No trained models found!${NC}"
+        echo ""
+        echo "Please train models first:"
+        echo "  seclyzer train --all"
+        exit 1
+    fi
+    
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "${YELLOW}⚠${NC} Authentication engine already running"
+        return
+    fi
+    
+    mkdir -p "$LOG_DIR"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    local daemon_args=""
+    if [ "$no_locking" = true ]; then
+        daemon_args="--no-locking"
+        echo -e "${YELLOW}⚠${NC} Locking disabled (scores only mode)"
+    fi
+    
+    nohup python3 "$PROJECT_ROOT/daemon/seclyzer_daemon.py" $daemon_args > "$LOG_DIR/seclyzer_daemon.log" 2>&1 &
+    
+    sleep 2
+    
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "${GREEN}✓${NC} Authentication engine started"
+        if [ "$no_locking" = true ]; then
+            echo "  Mode: Scores only (no screen locking)"
+        else
+            echo "  Mode: Full protection (with screen locking)"
+        fi
+        echo ""
+        echo "View logs: tail -f $LOG_DIR/seclyzer_daemon.log"
+    else
+        echo -e "${RED}✗${NC} Failed to start authentication engine"
+        echo "Check logs: cat $LOG_DIR/seclyzer_daemon.log"
+    fi
+}
+
+stop_auth_engine() {
+    echo -e "${YELLOW}Stopping Authentication Engine...${NC}"
+    
+    pkill -f "seclyzer_daemon.py" 2>/dev/null && echo -e "${GREEN}✓${NC} Authentication engine stopped" || echo "Not running"
+}
+
+train_models() {
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║           SecLyzer Model Training                      ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    # Parse arguments
+    local train_all=false
+    local train_keystroke=false
+    local train_mouse=false
+    local train_app=false
+    local check_only=false
+    local force=false
+    local days=30
+    
+    shift  # Remove 'train' from args
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --all|-a)
+                train_all=true
+                shift
+                ;;
+            --keystroke|-k)
+                train_keystroke=true
+                shift
+                ;;
+            --mouse|-m)
+                train_mouse=true
+                shift
+                ;;
+            --app|-p)
+                train_app=true
+                shift
+                ;;
+            --check|-c)
+                check_only=true
+                shift
+                ;;
+            --force|-f)
+                force=true
+                shift
+                ;;
+            --days|-d)
+                days="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    # Build command
+    local cmd="python3 $PROJECT_ROOT/scripts/train_models.py"
+    
+    if [ "$check_only" = true ]; then
+        cmd="$cmd --check"
+    elif [ "$train_all" = true ]; then
+        cmd="$cmd --all"
+    else
+        [ "$train_keystroke" = true ] && cmd="$cmd --keystroke"
+        [ "$train_mouse" = true ] && cmd="$cmd --mouse"
+        [ "$train_app" = true ] && cmd="$cmd --app"
+    fi
+    
+    [ "$force" = true ] && cmd="$cmd --force"
+    cmd="$cmd --days $days"
+    
+    # If no specific model selected and not check, default to all
+    if [ "$train_all" = false ] && [ "$train_keystroke" = false ] && [ "$train_mouse" = false ] && [ "$train_app" = false ] && [ "$check_only" = false ]; then
+        cmd="$cmd --all"
+    fi
+    
+    echo "Running: $cmd"
+    echo ""
+    
+    eval $cmd
+    
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ] && [ "$check_only" = false ]; then
+        echo ""
+        echo -e "${GREEN}✓${NC} Training complete!"
+        echo ""
+        echo "Next steps:"
+        echo "  seclyzer auth    # Start authentication engine with new models"
+    fi
+    
+    return $exit_code
+}
+
+check_training_data() {
+    echo -e "${CYAN}Checking Training Data Availability...${NC}"
+    echo ""
+    
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    python3 "$PROJECT_ROOT/scripts/train_models.py" --check
 }
 
 disable_authentication() {
     echo -e "${YELLOW}Disabling SecLyzer Authentication...${NC}"
     echo ""
     
-    # Require password
     if ! verify_seclyzer_password; then
         echo -e "${RED}✗ Incorrect password. Access denied.${NC}"
         exit 1
     fi
     
-    echo ""
-    echo "ℹ️  Collectors will keep running (data collection continues)"
-    echo "ℹ️  Only authentication/locking would be disabled (when an inference/decision engine is active)"
-    echo ""
-    
-    # Create dev mode magic file
     touch /tmp/.seclyzer_dev_mode
     
-    echo -e "${GREEN}✓${NC} Authentication disabled"
+    echo -e "${GREEN}✓${NC} Authentication disabled (developer mode active)"
     echo ""
-    echo "How it works in this Phase 3 snapshot:"
-    echo "  - Collectors can keep running (data being collected)"
-    echo "  - Feature extractors can keep running (feature computation)"
-    echo "  - Inference/decision engine is not active yet in this snapshot (planned for a later phase)"
-    echo ""
-    echo "To re-enable: sudo ./scripts/seclyzer enable"
+    echo "Data collection continues. To re-enable: seclyzer enable"
 }
 
 enable_authentication() {
     echo -e "${GREEN}Enabling SecLyzer Authentication...${NC}"
-    echo ""
     
-    # Remove dev mode magic file
     rm -f /tmp/.seclyzer_dev_mode
     
     echo -e "${GREEN}✓${NC} Authentication enabled"
-    echo ""
-    echo "SecLyzer is now protecting your system"
 }
 
 stop_all() {
     echo -e "${RED}╔═══════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║  WARNING: This will STOP all data collection!    ║${NC}"
+    echo -e "${RED}║  WARNING: This will STOP all SecLyzer services!  ║${NC}"
     echo -e "${RED}╚═══════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    # Require password
     if ! verify_seclyzer_password; then
         echo -e "${RED}✗ Incorrect password. Access denied.${NC}"
         exit 1
     fi
     
-    echo ""
-    echo "This includes:"
-    echo "  - All collectors (keyboard, mouse, app)"
-    echo "  - All feature extractors"
-    echo "  - Databases (Redis, InfluxDB)"
-    echo ""
-    echo "Use this ONLY for maintenance or troubleshooting."
-    echo "Otherwise, use 'disable' to just turn off authentication."
-    echo ""
     read -p "Are you sure? [y/N]: " confirm
-    
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "Cancelled."
         exit 0
     fi
     
     echo ""
-    echo -e "${RED}Stopping everything...${NC}"
-    echo ""
+    echo "Stopping all services..."
     
-    # Stop systemd services
+    # Stop auth engine
+    pkill -f "seclyzer_daemon.py" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Authentication engine stopped"
+    
+    # Stop extractors
+    pkill -f "keystroke_extractor.py" 2>/dev/null || true
+    pkill -f "mouse_extractor.py" 2>/dev/null || true
+    pkill -f "app_tracker.py" 2>/dev/null || true
     echo -e "${GREEN}✓${NC} Feature extractors stopped"
     
-    # Stop databases
-    echo "Stopping databases..."
-    sudo systemctl stop redis-server || true
-    sudo systemctl stop influxdb || true
-    echo -e "${GREEN}✓${NC} Databases stopped"
+    # Stop collectors
+    pkill -f "keyboard_collector" 2>/dev/null || true
+    pkill -f "mouse_collector" 2>/dev/null || true
+    pkill -f "app_monitor" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Collectors stopped"
     
     echo ""
-    echo -e "${GREEN}✓${NC} Everything stopped"
-    echo ""
-    echo "To restart: sudo ./scripts/seclyzer start"
+    echo -e "${GREEN}✓${NC} All SecLyzer services stopped"
 }
 
-restart_collectors() {
-    echo "Restarting collectors (keeps databases running)..."
+restart_services() {
+    echo -e "${YELLOW}Restarting SecLyzer services...${NC}"
+    echo ""
     
-    if [ "$USE_SYSTEMD" = true ]; then
-        sudo systemctl restart seclyzer-keyboard
-        sudo systemctl restart seclyzer-mouse
-        sudo systemctl restart seclyzer-app
-    else
-        echo "Manual mode - please restart collectors manually"
+    # Stop everything first
+    pkill -f "seclyzer_daemon.py" 2>/dev/null || true
+    pkill -f "keystroke_extractor.py" 2>/dev/null || true
+    pkill -f "mouse_extractor.py" 2>/dev/null || true
+    pkill -f "app_tracker.py" 2>/dev/null || true
+    pkill -f "keyboard_collector" 2>/dev/null || true
+    pkill -f "mouse_collector" 2>/dev/null || true
+    pkill -f "app_monitor" 2>/dev/null || true
+    
+    sleep 2
+    
+    # Start services
+    start_services
+    start_extractors
+    
+    # Start auth if models exist
+    if ls "$PROJECT_ROOT/data/models/keystroke_rf_"*.pkl > /dev/null 2>&1; then
+        start_auth_engine
     fi
     
-    echo -e "${GREEN}✓${NC} Collectors restarted"
+    echo ""
+    echo -e "${GREEN}✓${NC} SecLyzer restarted"
 }
 
-enable_autostart() {
-    if [ "$USE_SYSTEMD" != true ]; then
-        echo -e "${RED}✗ Systemd services not installed${NC}"
-        echo "Run install.sh and enable systemd integration"
+show_logs() {
+    local component="${1:-all}"
+    
+    echo -e "${CYAN}SecLyzer Logs${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
+    echo ""
+    
+    case "$component" in
+        auth|daemon)
+            tail -f "$LOG_DIR/seclyzer_daemon.log" 2>/dev/null || echo "No auth logs found"
+            ;;
+        keystroke)
+            tail -f "$LOG_DIR/keystroke_extractor.log" 2>/dev/null || echo "No keystroke logs found"
+            ;;
+        mouse)
+            tail -f "$LOG_DIR/mouse_extractor.log" 2>/dev/null || echo "No mouse logs found"
+            ;;
+        app)
+            tail -f "$LOG_DIR/app_tracker.log" 2>/dev/null || echo "No app logs found"
+            ;;
+        all|*)
+            tail -f "$LOG_DIR"/*.log 2>/dev/null || echo "No logs found in $LOG_DIR"
+            ;;
+    esac
+}
+
+reload_models() {
+    echo -e "${CYAN}Reloading models...${NC}"
+    
+    if ! pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "${RED}✗${NC} Authentication engine not running"
         exit 1
     fi
     
-    echo "Enabling auto-start on boot..."
-    sudo systemctl enable seclyzer-keyboard
-    sudo systemctl enable seclyzer-mouse
-    sudo systemctl enable seclyzer-app
-    echo -e "${GREEN}✓${NC} Auto-start enabled"
-}
-
-disable_autostart() {
-    if [ "$USE_SYSTEMD" != true ]; then
-        echo "Systemd services not installed, nothing to disable"
-        exit 0
-    fi
+    # Send SIGHUP to reload models
+    pkill -HUP -f "seclyzer_daemon.py" 2>/dev/null
     
-    echo "Disabling auto-start on boot..."
-    sudo systemctl disable seclyzer-keyboard || true
-    sudo systemctl disable seclyzer-mouse || true
-    sudo systemctl disable seclyzer-app || true
-    echo -e "${GREEN}✓${NC} Auto-start disabled"
+    echo -e "${GREEN}✓${NC} Model reload signal sent"
+    echo "Check logs: tail -f $LOG_DIR/seclyzer_daemon.log"
 }
 
-show_help() {
-    echo "SecLyzer Control Script"
+show_version() {
+    echo -e "${BLUE}SecLyzer v0.3.1${NC}"
+    echo "Behavioral Biometric Authentication System"
     echo ""
-    echo "Usage: seclyzer [command]"
+    echo "Phase 4: Decoupled Engine Architecture"
     echo ""
-    echo "Commands:"
-    echo "  start       Start all SecLyzer services (collectors + databases)"
-    echo "  disable     Disable authentication (keep collecting data)"
-    echo "  enable      Re-enable authentication"
-    echo "  stop-all    Stop EVERYTHING (collectors, extractors, databases)"
-    echo "  restart     Restart collectors"
-    echo "  status      Show status of all components"
-    echo "  autostart   Enable auto-start on boot (systemd)"
-    echo "  no-autostart Disable auto-start on boot (systemd)"
-    echo "  help        Show this help message"
-    echo ""
-    echo "Common Usage:"
-    echo "  sudo seclyzer start          # Start SecLyzer (first time)"
-    echo "  sudo seclyzer disable        # Turn off locking (keep data collection)"
-    echo "  sudo seclyzer enable         # Turn on locking again"
-    echo "  seclyzer status              # Check what's running"
-    echo "  sudo seclyzer stop-all       # Full shutdown (rare)"
-    echo ""
-    echo "Note: Use 'disable/enable' for daily on/off, NOT 'stop-all'"
+    echo "Components:"
+    echo "  • Rust Collectors (keyboard, mouse, app)"
+    echo "  • Python Feature Extractors"
+    echo "  • ML Models (Random Forest, One-Class SVM, Markov Chain)"
+    echo "  • Inference Engine (real-time scoring)"
+    echo "  • Decision Engine (authentication state machine)"
+    echo "  • Locking Engine (system actions - optional)"
 }
 
 show_resources() {
-    echo -e "${BLUE}"
-    echo "╔═══════════════════════════════════════════════════╗"
-    echo "║      SecLyzer Resource Usage                      ║"
-    echo "╚═══════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║      SecLyzer Resource Usage                      ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
+    echo ""
 
-    # Header
     printf "%-25s %-8s %-8s %-8s\n" "COMPONENT" "PID" "CPU%" "MEM(MB)"
     echo "-----------------------------------------------------"
 
-    total_cpu=0
-    total_mem=0
-
-    # Function to print process stats
     print_proc_stats() {
         local name=$1
         local pattern=$2
-        
-        # Get PID, CPU, RSS (in KB)
-        # We use grep to filter, and head to take the first one if multiple (e.g. multiple threads/workers)
-        # For python scripts, we match the full command line
         local stats=$(ps -eo pid,pcpu,rss,cmd | grep "$pattern" | grep -v "grep" | head -n 1)
         
         if [ -n "$stats" ]; then
             local pid=$(echo "$stats" | awk '{print $1}')
             local cpu=$(echo "$stats" | awk '{print $2}')
             local rss_kb=$(echo "$stats" | awk '{print $3}')
-            local mem_mb=$(echo "scale=1; $rss_kb / 1024" | bc)
-            
+            local mem_mb=$(echo "scale=1; $rss_kb / 1024" | bc 2>/dev/null || echo "0")
             printf "%-25s %-8s %-8s %-8s\n" "$name" "$pid" "$cpu%" "${mem_mb}MB"
-            
-            # Add to totals (using bc for floating point math)
-            total_cpu=$(echo "$total_cpu + $cpu" | bc)
-            total_mem=$(echo "$total_mem + $mem_mb" | bc)
         else
-            printf "%-25s %-8s %-8s %-8s\n" "$name" "-" "0.0%" "0.0MB"
+            printf "%-25s %-8s %-8s %-8s\n" "$name" "-" "-" "-"
         fi
     }
 
-    # Collectors
     print_proc_stats "Keyboard Collector" "keyboard_collector"
     print_proc_stats "Mouse Collector" "mouse_collector"
     print_proc_stats "App Monitor" "app_monitor"
-    
     echo "-----------------------------------------------------"
-    
-    # Extractors
     print_proc_stats "Keystroke Extractor" "keystroke_extractor.py"
     print_proc_stats "Mouse Extractor" "mouse_extractor.py"
     print_proc_stats "App Tracker" "app_tracker.py"
-    
     echo "-----------------------------------------------------"
-
-    # Databases
+    print_proc_stats "Auth Engine" "seclyzer_daemon.py"
+    echo "-----------------------------------------------------"
     print_proc_stats "Redis" "redis-server"
     print_proc_stats "InfluxDB" "influxd"
-
-    echo "====================================================="
-    printf "%-25s %-8s %-8s %-8s\n" "TOTAL" "-" "${total_cpu}%" "${total_mem}MB"
     echo ""
+}
+
+show_help() {
+    show_banner
+    echo "Usage: seclyzer <command> [options]"
+    echo ""
+    echo -e "${CYAN}SERVICE MANAGEMENT:${NC}"
+    echo "  start           Start databases and collectors"
+    echo "  extractors      Start feature extractors"
+    echo "  auth            Start authentication engine (inference + decision)"
+    echo "  restart         Restart all services"
+    echo "  stop-extractors Stop feature extractors"
+    echo "  stop-auth       Stop authentication engine"
+    echo "  stop-all        Stop ALL SecLyzer services"
+    echo "  status          Show status of all components"
+    echo "  resources       Show resource usage"
+    echo ""
+    echo -e "${CYAN}MODEL TRAINING:${NC}"
+    echo "  train --all         Train all models (keystroke, mouse, app)"
+    echo "  train --keystroke   Train keystroke model only"
+    echo "  train --mouse       Train mouse model only"
+    echo "  train --app         Train app usage model only"
+    echo "  train --check       Check training data availability"
+    echo "  train --force       Force training even with insufficient data"
+    echo "  train --days N      Use N days of historical data (default: 30)"
+    echo ""
+    echo -e "${CYAN}AUTHENTICATION CONTROL:${NC}"
+    echo "  auth                Start authentication (inference + decision + locking)"
+    echo "  auth --no-locking   Start without locking (scores only, for debugging)"
+    echo "  disable             Disable authentication (developer mode)"
+    echo "  enable              Re-enable authentication"
+    echo "  reload              Hot-reload trained models"
+    echo ""
+    echo -e "${CYAN}MONITORING:${NC}"
+    echo "  logs [component]    View logs (all, auth, keystroke, mouse, app)"
+    echo "  version             Show version information"
+    echo ""
+    echo -e "${CYAN}EXAMPLES:${NC}"
+    echo "  seclyzer start              # Start collectors and databases"
+    echo "  seclyzer extractors         # Start feature extraction"
+    echo "  seclyzer train --check      # Check if enough data for training"
+    echo "  seclyzer train --all        # Train all models"
+    echo "  seclyzer auth               # Start authentication"
+    echo "  seclyzer status             # Check system status"
+    echo "  seclyzer logs auth          # View authentication logs"
+    echo ""
+    echo -e "${CYAN}TYPICAL WORKFLOW:${NC}"
+    echo "  1. seclyzer start           # Start data collection"
+    echo "  2. seclyzer extractors      # Start feature extraction"
+    echo "  3. (wait 1-2 weeks for data collection)"
+    echo "  4. seclyzer train --all     # Train models"
+    echo "  5. seclyzer auth            # Enable authentication"
 }
 
 # Main logic
@@ -380,17 +656,23 @@ case "${1:-}" in
     start)
         start_services
         ;;
-    disable)
-        disable_authentication
+    extractors)
+        start_extractors
         ;;
-    enable)
-        enable_authentication
+    auth)
+        start_auth_engine "$@"
+        ;;
+    restart)
+        restart_services
+        ;;
+    stop-extractors)
+        stop_extractors
+        ;;
+    stop-auth)
+        stop_auth_engine
         ;;
     stop-all)
         stop_all
-        ;;
-    restart)
-        restart_collectors
         ;;
     status)
         show_status
@@ -398,11 +680,26 @@ case "${1:-}" in
     resources)
         show_resources
         ;;
-    autostart)
-        enable_autostart
+    logs)
+        show_logs "${2:-all}"
         ;;
-    no-autostart)
-        disable_autostart
+    train)
+        train_models "$@"
+        ;;
+    check-data)
+        check_training_data
+        ;;
+    disable)
+        disable_authentication
+        ;;
+    enable)
+        enable_authentication
+        ;;
+    reload)
+        reload_models
+        ;;
+    version|--version|-v)
+        show_version
         ;;
     help|--help|-h)
         show_help

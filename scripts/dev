@@ -39,29 +39,42 @@ show_help() {
     echo "  status             - Show detailed status of all components"
     echo "  logs               - Tail all logs in real-time"
     echo ""
+    echo -e "${CYAN}AUTHENTICATION ENGINE:${NC}"
+    echo "  auth-start             - Start full auth (inference + decision + locking)"
+    echo "  auth-start-no-lock     - Start without locking (scores only)"
+    echo "  auth-stop              - Stop authentication engine"
+    echo "  auth-status            - Show authentication engine status"
+    echo "  auth-scores            - Monitor real-time confidence scores"
+    echo "  debug-decisions        - Monitor decision engine state changes"
+    echo ""
     echo -e "${CYAN}DEVELOPMENT:${NC}"
-    echo "  test               - Run pytest suite (if tests/ directory is present)"
-    echo "  test-coverage      - Run tests with coverage report (if tests/ directory is present)"
+    echo "  test               - Run pytest suite"
+    echo "  test-coverage      - Run tests with coverage report"
+    echo "  test-fast          - Run tests without slow markers"
     echo "  lint               - Run linters (black, flake8, mypy)"
     echo "  format             - Auto-format code (black, isort)"
     echo "  check-health       - Verify all dependencies"
     echo "  smoke-test         - Run a quick smoke test for core services"
     echo ""
     echo -e "${CYAN}DATA & MODELS:${NC}"
-    echo "  check-data         - Check training data readiness (if scripts/check_training_readiness.py is present)"
-    echo "  train              - Train models (if scripts/train_models.py is present; prompts for confirmation)"
+    echo "  check-data         - Check training data readiness"
+    echo "  train              - Train models (prompts for confirmation)"
+    echo "  train-quick        - Train with minimal data (for testing)"
     echo "  export-data        - Export collected data to CSV"
     echo "  backup             - Create system backup"
     echo ""
     echo -e "${CYAN}DEBUGGING:${NC}"
     echo "  debug-redis        - Monitor Redis Pub/Sub"
     echo "  debug-influx       - Test InfluxDB connection"
+    echo "  debug-scores       - Monitor inference scores in real-time"
+    echo "  debug-decisions    - Monitor decision state changes"
     echo "  show-metrics       - Display system metrics"
     echo "  tail-json-logs     - Parse and display JSON logs"
     echo ""
     echo -e "${CYAN}CLEANUP:${NC}"
     echo "  clean-logs         - Clear old log files"
     echo "  clean-pycache      - Remove __pycache__ directories"
+    echo "  clean-models       - Remove trained models"
     echo "  reset-data         - Reset all collected data (DANGEROUS)"
     echo ""
     echo -e "${CYAN}UTILITIES:${NC}"
@@ -71,7 +84,7 @@ show_help() {
     echo ""
     echo -e "${CYAN}GIT & BACKUP:${NC}"
     echo "  backup-git         - Commit changes and push a backup branch to origin"
-    echo "  rollback-git       - Discard local changes and reset to last commit (git reset --hard HEAD)"
+    echo "  rollback-git       - Discard local changes and reset to last commit"
     echo ""
 }
 
@@ -402,14 +415,26 @@ cmd_env() {
 cmd_version() {
     echo -e "${BLUE}═══ SecLyzer Version Info ═══${NC}\n"
     
-    echo "Version: 0.2.0 (Phase 3 - Model Training Infrastructure)"
-    echo "Status: Phase 3 snapshot (data collection + training infrastructure; inference and hardening planned)"
+    echo "Version: 0.3.1 (Phase 4 - Decoupled Engine Architecture)"
+    echo "Status: Production-ready with modular authentication pipeline"
     
     echo -e "\n${CYAN}Components:${NC}"
-    echo "  Collectors: 3 (Rust)"
-    echo "  Extractors: 3 (Python)"
-    echo "  ML Models: Keystroke, Mouse, App (training scripts planned)"
-    echo "  Inference: Planned (not active in this snapshot)"
+    echo "  Collectors: 3 (Rust - keyboard, mouse, app)"
+    echo "  Extractors: 3 (Python - keystroke, mouse, app)"
+    echo "  ML Models:"
+    echo "    • Keystroke: Random Forest classifier"
+    echo "    • Mouse: One-Class SVM anomaly detection"
+    echo "    • App Usage: Markov chain transition model"
+    echo "  Engines (decoupled):"
+    echo "    • Inference Engine: Real-time scoring with fusion"
+    echo "    • Decision Engine: 4-state authentication FSM"
+    echo "    • Locking Engine: System actions (optional)"
+    
+    echo -e "\n${CYAN}Test Coverage:${NC}"
+    echo "  Total Tests: 178"
+    echo "  Inference Tests: 22"
+    echo "  Decision Tests: 28"
+    echo "  Locking Tests: 24"
     
     echo -e "\n${CYAN}Git Info:${NC}"
     if [ -d ".git" ]; then
@@ -561,6 +586,140 @@ cmd_rollback() {
     fi
 }
 
+cmd_auth_start() {
+    local no_locking="${1:-false}"
+    
+    echo -e "${GREEN}Starting Authentication Engine...${NC}\n"
+    
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "${YELLOW}⚠${NC} Authentication engine already running"
+        return 0
+    fi
+    
+    mkdir -p "$LOG_DIR"
+    
+    local daemon_args=""
+    if [ "$no_locking" = "true" ]; then
+        daemon_args="--no-locking"
+        echo -e "${YELLOW}⚠${NC} Starting in scores-only mode (no locking)"
+    fi
+    
+    nohup python3 "$PROJECT_ROOT/daemon/seclyzer_daemon.py" $daemon_args > "$LOG_DIR/seclyzer_daemon.log" 2>&1 &
+    
+    sleep 2
+    
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        echo -e "${GREEN}✓${NC} Authentication engine started (PID: $(pgrep -f seclyzer_daemon.py))"
+        if [ "$no_locking" = "true" ]; then
+            echo "  Mode: Scores only (locking disabled)"
+        else
+            echo "  Mode: Full protection (with locking)"
+        fi
+    else
+        echo -e "${RED}✗${NC} Failed to start. Check: tail $LOG_DIR/seclyzer_daemon.log"
+    fi
+}
+
+cmd_auth_start_no_lock() {
+    cmd_auth_start "true"
+}
+
+cmd_auth_stop() {
+    echo -e "${YELLOW}Stopping Authentication Engine...${NC}"
+    pkill -f "seclyzer_daemon.py" 2>/dev/null && echo -e "${GREEN}✓${NC} Stopped" || echo "Not running"
+}
+
+cmd_auth_status() {
+    echo -e "${BLUE}═══ Authentication Engine Status ═══${NC}\n"
+    
+    echo -e "${CYAN}Daemon:${NC}"
+    if pgrep -f "seclyzer_daemon.py" > /dev/null; then
+        local pid=$(pgrep -f "seclyzer_daemon.py")
+        echo -e "  ${GREEN}✓${NC} Running (PID: $pid)"
+        
+        # Show memory/CPU
+        local stats=$(ps -p $pid -o %cpu,%mem --no-headers 2>/dev/null)
+        if [ -n "$stats" ]; then
+            echo "  CPU: $(echo $stats | awk '{print $1}')%"
+            echo "  MEM: $(echo $stats | awk '{print $2}')%"
+        fi
+        
+        # Check if running with --no-locking
+        local cmdline=$(ps -p $pid -o args --no-headers 2>/dev/null)
+        if echo "$cmdline" | grep -q "\-\-no-locking"; then
+            echo -e "  Mode: ${YELLOW}Scores only${NC} (locking disabled)"
+        else
+            echo -e "  Mode: ${GREEN}Full protection${NC} (with locking)"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Not running"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Components:${NC}"
+    echo "  • Inference Engine: Calculates confidence scores"
+    echo "  • Decision Engine: Determines authentication state"
+    echo "  • Locking Engine: Executes system actions (optional)"
+    
+    echo ""
+    echo -e "${CYAN}Developer Mode:${NC}"
+    if [ -f "/tmp/.seclyzer_dev_mode" ]; then
+        echo -e "  ${YELLOW}⚠ ACTIVE${NC} (authentication bypassed)"
+    else
+        echo -e "  ${GREEN}✓${NC} Disabled (normal operation)"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Trained Models:${NC}"
+    ls -la "$PROJECT_ROOT/data/models/"*.pkl 2>/dev/null | awk '{print "  " $NF}' || echo "  (none)"
+    ls -la "$PROJECT_ROOT/data/models/"*.json 2>/dev/null | awk '{print "  " $NF}' || true
+}
+
+cmd_debug_decisions() {
+    echo -e "${CYAN}Monitoring decision engine state changes...${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+    
+    redis-cli SUBSCRIBE seclyzer:state_change seclyzer:decisions
+}
+
+cmd_auth_scores() {
+    echo -e "${CYAN}Monitoring real-time confidence scores...${NC}"
+    echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+    
+    redis-cli SUBSCRIBE seclyzer:scores:fused seclyzer:scores:keystroke seclyzer:scores:mouse seclyzer:scores:app
+}
+
+cmd_debug_scores() {
+    cmd_auth_scores
+}
+
+cmd_test_fast() {
+    echo -e "${CYAN}Running fast tests (excluding slow markers)...${NC}\n"
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    pytest tests/ -v -m "not slow" --tb=short
+}
+
+cmd_train_quick() {
+    echo -e "${CYAN}Quick training with minimal data (for testing)...${NC}\n"
+    cd "$PROJECT_ROOT"
+    source "$VENV_PATH/bin/activate"
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+    python3 scripts/train_models.py --all --days 7 --force
+}
+
+cmd_clean_models() {
+    echo -e "${YELLOW}Removing trained models...${NC}"
+    rm -f "$PROJECT_ROOT/data/models/"*.pkl 2>/dev/null
+    rm -f "$PROJECT_ROOT/data/models/"*.json 2>/dev/null
+    echo -e "${GREEN}✓${NC} Models removed"
+}
+
 cmd_reset_data() {
     echo -e "${RED}⚠⚠⚠ WARNING ⚠⚠⚠${NC}"
     echo "This will DELETE all collected data!"
@@ -602,11 +761,34 @@ case "${1:-help}" in
     logs)
         cmd_logs
         ;;
+    # Authentication Engine
+    auth-start)
+        check_dependencies && cmd_auth_start
+        ;;
+    auth-start-no-lock)
+        check_dependencies && cmd_auth_start_no_lock
+        ;;
+    auth-stop)
+        cmd_auth_stop
+        ;;
+    auth-status)
+        cmd_auth_status
+        ;;
+    auth-scores)
+        cmd_auth_scores
+        ;;
+    debug-decisions)
+        cmd_debug_decisions
+        ;;
+    # Testing
     test)
         check_dependencies && cmd_test
         ;;
     test-coverage)
         check_dependencies && cmd_test_coverage
+        ;;
+    test-fast)
+        check_dependencies && cmd_test_fast
         ;;
     lint)
         check_dependencies && cmd_lint
@@ -614,14 +796,25 @@ case "${1:-help}" in
     format)
         check_dependencies && cmd_format
         ;;
+    # Data & Models
     check-data)
         check_dependencies && cmd_check_data
         ;;
     train)
         check_dependencies && cmd_train
         ;;
+    train-quick)
+        check_dependencies && cmd_train_quick
+        ;;
+    # Debugging
     debug-redis)
         cmd_debug_redis
+        ;;
+    debug-influx)
+        cmd_debug_influx
+        ;;
+    debug-scores)
+        cmd_debug_scores
         ;;
     show-metrics)
         cmd_show_metrics
@@ -629,20 +822,9 @@ case "${1:-help}" in
     tail-json-logs)
         cmd_tail_json_logs
         ;;
+    # Utilities
     config)
         cmd_config
-        ;;
-    clean-logs)
-        cmd_clean_logs
-        ;;
-    clean-pycache)
-        cmd_clean_pycache
-        ;;
-    check-health)
-        cmd_check_health
-        ;;
-    smoke-test)
-        cmd_smoke_test
         ;;
     env)
         cmd_env
@@ -650,12 +832,31 @@ case "${1:-help}" in
     version)
         cmd_version
         ;;
+    # Cleanup
+    clean-logs)
+        cmd_clean_logs
+        ;;
+    clean-pycache)
+        cmd_clean_pycache
+        ;;
+    clean-models)
+        cmd_clean_models
+        ;;
+    # Health & Smoke
+    check-health)
+        cmd_check_health
+        ;;
+    smoke-test)
+        cmd_smoke_test
+        ;;
+    # Data operations
     export-data)
         check_dependencies && cmd_export_data
         ;;
-    debug-influx)
-        cmd_debug_influx
+    reset-data)
+        cmd_reset_data
         ;;
+    # Git & Backup
     backup)
         cmd_backup
         ;;
@@ -664,9 +865,6 @@ case "${1:-help}" in
         ;;
     rollback-git)
         cmd_rollback
-        ;;
-    reset-data)
-        cmd_reset_data
         ;;
     help|--help|-h)
         show_help

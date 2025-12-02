@@ -21,4 +21,4 @@ def test_seclyzer_help_smoke():
         ["./scripts/seclyzer", "help"], cwd=root, capture_output=True, text=True
     )
     assert result.returncode == 0
-    assert "SecLyzer Control Script" in result.stdout
+    assert "SecLyzer Control Interface" in result.stdout

@@ -127,7 +127,7 @@ class Database:
             # Try to parse as JSON, fallback to string
             try:
                 return json.loads(row["value"])
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return row["value"]
         return default
 
