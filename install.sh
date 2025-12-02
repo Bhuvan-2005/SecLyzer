@@ -471,8 +471,17 @@ install_influxdb() {
         rm -f "$TEMP_FILE"
         
         if [ -n "$INFLUX_TOKEN" ]; then
+            # Save to system config (root only)
             echo "$INFLUX_TOKEN" > "$CONFIG_DIR/influxdb_token"
             chmod 600 "$CONFIG_DIR/influxdb_token"
+            
+            # Also save to user's home directory (so extractors can read it)
+            local user_config_dir="$ACTUAL_HOME/.seclyzer"
+            mkdir -p "$user_config_dir"
+            echo "$INFLUX_TOKEN" > "$user_config_dir/influxdb_token"
+            chown -R "$ACTUAL_USER:$ACTUAL_USER" "$user_config_dir"
+            chmod 600 "$user_config_dir/influxdb_token"
+            echo "  Token saved to $CONFIG_DIR/influxdb_token and $user_config_dir/influxdb_token"
         fi
     else
         rm -f "$TEMP_FILE" 2>/dev/null
@@ -481,6 +490,13 @@ install_influxdb() {
     # Save credentials
     echo "INFLUX_PASSWORD=$INFLUX_PASSWORD" >> "$CONFIG_DIR/.credentials"
     chmod 600 "$CONFIG_DIR/.credentials"
+    
+    # Also copy credentials to user's home for easy access
+    local user_config_dir="$ACTUAL_HOME/.seclyzer"
+    mkdir -p "$user_config_dir"
+    cp "$CONFIG_DIR/.credentials" "$user_config_dir/.credentials" 2>/dev/null || true
+    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$user_config_dir"
+    chmod 600 "$user_config_dir/.credentials" 2>/dev/null || true
     
     mark_step_done "influxdb"
     echo -e "${GREEN}✓${NC} InfluxDB installed and configured"

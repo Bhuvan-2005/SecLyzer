@@ -26,26 +26,54 @@ class TimeSeriesDB:
     ):
         """Initialize InfluxDB connection"""
 
-        # Try to read token from file if not provided
+        # Try to read token from multiple locations if not provided
         if token is None:
-            token_file = "/etc/seclyzer/influxdb_token"
-            if os.path.exists(token_file):
-                with open(token_file, "r") as f:
-                    token = f.read().strip()
+            token = self._find_token()
 
         # Get config from environment or defaults, overriding provided args if env vars exist
         # This allows environment variables to take precedence for deployment flexibility
         self.url = os.getenv("INFLUX_URL", url)
-        self.token = os.getenv(
-            "INFLUX_TOKEN", token if token is not None else ""
-        )  # Use provided token if not None, else empty string for env fallback
+        self.token = os.getenv("INFLUX_TOKEN", token if token else "")
         self.org = os.getenv("INFLUX_ORG", org)
         self.bucket = os.getenv("INFLUX_BUCKET", bucket)
+
+        # Warn if no token found
+        if not self.token:
+            logger.warning(
+                "No InfluxDB token found! Data will not be saved.",
+                hint="Run 'seclyzer credentials' to see setup instructions or set INFLUX_TOKEN env var"
+            )
 
         # Initialize client
         self.client = InfluxDBClient(url=self.url, token=self.token, org=self.org)
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         self.query_api = self.client.query_api()
+
+    def _find_token(self) -> Optional[str]:
+        """Try to find InfluxDB token from multiple locations"""
+        home = os.path.expanduser("~")
+        
+        # Locations to check (in order of priority)
+        token_locations = [
+            "/etc/seclyzer/influxdb_token",
+            os.path.join(home, ".seclyzer/influxdb_token"),
+            os.path.join(home, ".config/seclyzer/influxdb_token"),
+        ]
+        
+        for token_file in token_locations:
+            if os.path.exists(token_file):
+                try:
+                    with open(token_file, "r") as f:
+                        token = f.read().strip()
+                        if token:
+                            logger.info(f"Loaded InfluxDB token from {token_file}")
+                            return token
+                except PermissionError:
+                    logger.warning(f"Cannot read token file (permission denied): {token_file}")
+                except Exception as e:
+                    logger.warning(f"Error reading token file {token_file}: {e}")
+        
+        return None
 
     def close(self):
         """Close connection"""
